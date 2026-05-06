@@ -14,8 +14,11 @@ The first implementation target is a normal LN GET request/response flow:
 
 ## Build
 
-The phase 0 repository contains documentation only. CMake targets are added in
-phase 1.
+```text
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build
+```
 
 ## Documentation
 
