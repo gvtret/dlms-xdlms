@@ -59,6 +59,14 @@ The default is confirmed normal priority.
 The first phase keeps `data` as encoded xDLMS data bytes. Typed COSEM data
 projection belongs to later service/facade work.
 
+`SetResult` contains:
+
+- `invokeId`
+- `accessResult`
+
+`accessResult` is the SET-RESPONSE-NORMAL `Data-Access-Result` value. A value
+of `0` represents success.
+
 ## 4. Client
 
 ```cpp
@@ -88,6 +96,9 @@ public:
 
   virtual XdlmsStatus HandleGet(const GetIndication& indication,
                                 GetResult& result) = 0;
+
+  virtual XdlmsStatus HandleSet(const SetIndication& indication,
+                                SetResult& result);
 };
 ```
 
@@ -96,6 +107,17 @@ public:
 - `invokeId`
 - `options`
 - `descriptor`
+
+`SetIndication` contains:
+
+- `invokeId`
+- `options`
+- `descriptor`
+- `data`
+
+`data` carries encoded xDLMS `Data` bytes from SET-REQUEST-NORMAL. The default
+`HandleSet` implementation returns `UnsupportedFeature`, allowing existing
+GET-only handlers to remain valid until they explicitly support SET.
 
 `XdlmsServerDispatcher` validates the indication, calls the handler, and keeps
 the response invoke id aligned with the request.
@@ -111,6 +133,18 @@ indication.descriptor.attributeId = 2;
 
 dlms::xdlms::GetResult result;
 const dlms::xdlms::XdlmsStatus status = dispatcher.DispatchGet(indication, result);
+```
+
+```cpp
+dlms::xdlms::SetIndication indication = {};
+indication.invokeId = 1;
+indication.descriptor.classId = 1;
+indication.descriptor.instanceId = dlms::xdlms::CosemLogicalName(0, 0, 1, 0, 0, 255);
+indication.descriptor.attributeId = 2;
+indication.data = {0x12, 0x00, 0x01};
+
+dlms::xdlms::SetResult result;
+const dlms::xdlms::XdlmsStatus status = dispatcher.DispatchSet(indication, result);
 ```
 
 The handler contract is intentionally independent from `dlms-server`; the
@@ -179,12 +213,21 @@ classDiagram
     +descriptor
   }
 
+  class SetIndication {
+    +invokeId
+    +options
+    +descriptor
+    +data
+  }
+
   class IXdlmsServerHandler {
     +HandleGet(GetIndication, GetResult&) XdlmsStatus
+    +HandleSet(SetIndication, SetResult&) XdlmsStatus
   }
 
   class XdlmsServerDispatcher {
     +DispatchGet(GetIndication, GetResult&) XdlmsStatus
+    +DispatchSet(SetIndication, SetResult&) XdlmsStatus
   }
 
   class XdlmsServerApduProcessor {
@@ -196,8 +239,12 @@ classDiagram
   XdlmsClient --> GetResult
   GetIndication --> ServiceOptions
   GetIndication --> CosemAttributeDescriptor
+  SetIndication --> ServiceOptions
+  SetIndication --> CosemAttributeDescriptor
   XdlmsServerDispatcher --> IXdlmsServerHandler
   XdlmsServerDispatcher --> GetIndication
   XdlmsServerDispatcher --> GetResult
+  XdlmsServerDispatcher --> SetIndication
+  XdlmsServerDispatcher --> SetResult
   XdlmsServerApduProcessor --> XdlmsServerDispatcher
 ```

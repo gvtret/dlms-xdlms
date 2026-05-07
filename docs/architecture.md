@@ -133,14 +133,36 @@ The processor handles xDLMS service bytes only. Profile framing, ACSE
 association state, and ciphered APDU protection are still owned by adjacent
 layers.
 
-## 6. Ownership
+## 6. Server Normal SET Flow
+
+```mermaid
+sequenceDiagram
+  participant Boundary as Decoded SET Boundary
+  participant Dispatcher as XdlmsServerDispatcher
+  participant Handler as IXdlmsServerHandler
+  participant Server as dlms-server Adapter
+
+  Boundary->>Dispatcher: DispatchSet(indication)
+  Dispatcher->>Dispatcher: Validate invoke id, descriptor, and value bytes
+  Dispatcher->>Handler: HandleSet(indication, result)
+  Handler->>Server: Write attribute through server model
+  Server-->>Handler: data-access-result
+  Handler-->>Dispatcher: XdlmsStatus
+  Dispatcher-->>Boundary: SetResult with matching invoke id
+```
+
+`dlms-xdlms` owns the SET service contract and result shape. The embedding
+server layer owns write authorization, object lookup, and actual attribute
+mutation.
+
+## 7. Ownership
 
 `XdlmsClient` stores non-owning references to the association and profile APDU
 channel boundaries. Server dispatch stores non-owning access to an xDLMS server
 handler. The layer does not own transport resources, association lifetime, or
 COSEM object storage.
 
-## 7. Error Model
+## 8. Error Model
 
 The layer returns status codes only. Runtime API paths do not throw exceptions.
 Failures are reported at the xDLMS service boundary and do not close or release

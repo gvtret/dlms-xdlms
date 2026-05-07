@@ -162,3 +162,51 @@ Commit message:
 ```text
 build: update dlms-xdlms server apdu boundary
 ```
+
+## Phase 10. Server Normal SET Documentation
+
+Deliverables:
+
+- server-side normal SET requirements
+- `SetIndication` and `SetResult` API contract
+- server SET dispatch sequence diagram
+- server SET boundary test plan
+- implementation phase split
+
+Commit message:
+
+```text
+docs(xdlms): define server normal set boundary
+```
+
+## Phase 11. Server Normal SET Contract
+
+Deliverables:
+
+- `SetIndication`
+- `SetResult`
+- default `IXdlmsServerHandler::HandleSet` unsupported implementation
+- `XdlmsServerDispatcher::DispatchSet`
+- validation for invoke id, attribute descriptor, and value bytes
+- tests for success, data-access-result, invalid input, default unsupported
+  handler, and handler failure
+
+Commit message:
+
+```text
+feat(xdlms): add server normal set dispatcher
+```
+
+## Phase 12. Root Integration Update
+
+Deliverables:
+
+- root submodule pointer update
+- full workspace build and test run
+- commit message for the root repo
+
+Commit message:
+
+```text
+build: update dlms-xdlms set boundary
+```

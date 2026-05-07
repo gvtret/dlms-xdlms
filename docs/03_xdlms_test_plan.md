@@ -55,7 +55,22 @@ Required APDU boundary tests:
 - GET-NEXT, GET-WITH-LIST, and selective access map to `UnsupportedFeature`;
 - handler failure leaves response output empty.
 
-## 5. Verification Commands
+## 5. Server-Side Normal SET Tests
+
+Required server boundary tests:
+
+- default SET indication carries confirmed normal-priority options;
+- invalid invoke id maps to `InvalidArgument`;
+- invalid logical-name descriptor maps to `InvalidArgument`;
+- empty SET value bytes map to `InvalidArgument`;
+- dispatcher forwards descriptor, service options, and encoded value bytes to
+  the handler;
+- successful handler result preserves request invoke id;
+- handler data-access-result preserves request invoke id;
+- default GET-only handler SET support maps to `UnsupportedFeature`;
+- handler failure status is propagated without mutating unrelated result data.
+
+## 6. Verification Commands
 
 Use the existing workspace build directory when available:
 

@@ -91,7 +91,38 @@ Document RAG alignment:
 - unprotected APDU handling is valid only after the association/security layer
   has accepted the request context.
 
-## 6. State Requirements
+## 6. Server-Side Normal SET Boundary
+
+The next decoded server boundary shall accept SET-REQUEST-NORMAL and produce a
+SET-RESPONSE-NORMAL result model. This boundary does not decode raw APDU bytes
+and does not write COSEM object storage itself.
+
+Rules:
+
+- accept an already decoded normal SET request model;
+- preserve invoke id, service class, and priority in the response model;
+- carry one `CosemAttributeDescriptor`;
+- carry the SET value as encoded xDLMS `Data` bytes;
+- dispatch through the same abstract xDLMS server handler boundary used by
+  server-side GET;
+- return one data-access-result code for SET-RESPONSE-NORMAL;
+- reject missing value bytes before calling the handler;
+- keep selective access, SET-WITH-LIST, and SET block transfer out of this
+  phase;
+- avoid dependency on `dlms-server` or `dlms-cosem` to keep layer direction
+  acyclic.
+
+Document RAG alignment:
+
+- SET-REQUEST-NORMAL carries invoke-id-and-priority, a COSEM attribute
+  descriptor, an optional access selection field, and a value `Data`;
+- SET-RESPONSE-NORMAL carries invoke-id-and-priority and a
+  `Data-Access-Result`;
+- SET-WITH-FIRST-DATABLOCK, SET-WITH-DATABLOCK, SET-WITH-LIST, and
+  SET-WITH-LIST-AND-FIRST-DATABLOCK are separate service shapes and remain out
+  of this phase.
+
+## 7. State Requirements
 
 The client implementation shall be stateless except for invoke-id allocation.
 The server boundary shall be stateless and store only non-owning handler
@@ -109,17 +140,19 @@ Rules:
 - block-transfer responses return `BlockTransferRequired` until a block
   manager is implemented.
 
-## 7. Security Boundary
+## 8. Security Boundary
 
 The v1 layer shall not protect or unprotect ciphered APDUs. Security options
 may be modeled later, but actual ciphering belongs in `dlms-security`.
 
-## 8. Out of Scope
+## 9. Out of Scope
 
 - association opening and release;
 - Wrapper, HDLC, LLC, TCP, UDP, and serial transport ownership;
-- SET and ACTION services;
-- server-side SET and ACTION dispatch implementation;
+- client-side SET and ACTION services;
+- server-side ACTION dispatch implementation;
+- server-side SET APDU processing until its dedicated phase;
+- server-side SET selective access, list, and block-transfer forms;
 - server-side GET-NEXT, GET-WITH-LIST, and block transfer;
 - COSEM object access implementation inside `dlms-xdlms`;
 - GET-WITH-LIST;
