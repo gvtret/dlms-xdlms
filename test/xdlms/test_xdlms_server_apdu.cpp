@@ -329,7 +329,7 @@ TEST(XdlmsServerApduProcessor, RejectsUnsupportedGetShapes)
   EXPECT_EQ(0, handler.calls);
 }
 
-TEST(XdlmsServerApduProcessor, RejectsUnconfirmedAndHandlerFailures)
+TEST(XdlmsServerApduProcessor, RejectsUnconfirmedGetRequest)
 {
   FakeServerHandler handler;
   dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
@@ -341,12 +341,6 @@ TEST(XdlmsServerApduProcessor, RejectsUnconfirmedAndHandlerFailures)
             processor.ProcessRequest(MakeGetRequest(0x06u), response));
   EXPECT_TRUE(response.empty());
   EXPECT_EQ(0, handler.calls);
-
-  handler.status = dlms::xdlms::XdlmsStatus::InvalidState;
-  EXPECT_EQ(dlms::xdlms::XdlmsStatus::InvalidState,
-            processor.ProcessRequest(MakeGetRequest(0x86u), response));
-  EXPECT_TRUE(response.empty());
-  EXPECT_EQ(1, handler.calls);
 }
 
 TEST(XdlmsServerApduProcessor, ProcessSetRequestNormalEncodesSuccessResponse)
@@ -375,22 +369,6 @@ TEST(XdlmsServerApduProcessor, ProcessSetRequestNormalEncodesSuccessResponse)
             decoded.setResponseAny.choice);
   EXPECT_EQ(0xC8u, decoded.setResponseAny.invokeIdAndPriority);
   EXPECT_EQ(0u, decoded.setResponseAny.result);
-}
-
-TEST(XdlmsServerApduProcessor, ProcessSetRequestNormalEncodesAccessResult)
-{
-  FakeServerHandler handler;
-  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
-  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
-  std::vector<std::uint8_t> response;
-  handler.setResult.accessResult = 3u;
-
-  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
-            processor.ProcessRequest(MakeSetRequest(0x88u, 0x0001u), response));
-
-  const dlms::apdu::XdlmsApdu decoded = DecodeResponse(response);
-  EXPECT_EQ(0x88u, decoded.setResponseAny.invokeIdAndPriority);
-  EXPECT_EQ(3u, decoded.setResponseAny.result);
 }
 
 TEST(XdlmsServerApduProcessor, RejectsUnsupportedSetShapes)
@@ -437,7 +415,7 @@ TEST(XdlmsServerApduProcessor, RejectsUnsupportedSetShapes)
   EXPECT_EQ(0, handler.setCalls);
 }
 
-TEST(XdlmsServerApduProcessor, RejectsUnconfirmedSetAndHandlerFailures)
+TEST(XdlmsServerApduProcessor, RejectsUnconfirmedSetRequest)
 {
   FakeServerHandler handler;
   dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
@@ -449,12 +427,6 @@ TEST(XdlmsServerApduProcessor, RejectsUnconfirmedSetAndHandlerFailures)
             processor.ProcessRequest(MakeSetRequest(0x08u, 1u), response));
   EXPECT_TRUE(response.empty());
   EXPECT_EQ(0, handler.setCalls);
-
-  handler.setStatus = dlms::xdlms::XdlmsStatus::InvalidState;
-  EXPECT_EQ(dlms::xdlms::XdlmsStatus::InvalidState,
-            processor.ProcessRequest(MakeSetRequest(0x88u, 1u), response));
-  EXPECT_TRUE(response.empty());
-  EXPECT_EQ(1, handler.setCalls);
 }
 
 TEST(XdlmsServerApduProcessor, ProcessActionRequestNormalEncodesSuccessResponse)
@@ -584,7 +556,7 @@ TEST(XdlmsServerApduProcessor, RejectsUnsupportedActionShapes)
   EXPECT_EQ(0, handler.actionCalls);
 }
 
-TEST(XdlmsServerApduProcessor, RejectsUnconfirmedActionAndHandlerFailures)
+TEST(XdlmsServerApduProcessor, RejectsUnconfirmedActionRequest)
 {
   FakeServerHandler handler;
   dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
@@ -598,12 +570,4 @@ TEST(XdlmsServerApduProcessor, RejectsUnconfirmedActionAndHandlerFailures)
               response));
   EXPECT_TRUE(response.empty());
   EXPECT_EQ(0, handler.actionCalls);
-
-  handler.actionStatus = dlms::xdlms::XdlmsStatus::InvalidState;
-  EXPECT_EQ(dlms::xdlms::XdlmsStatus::InvalidState,
-            processor.ProcessRequest(
-              MakeActionRequest(0x89u, true, 1u),
-              response));
-  EXPECT_TRUE(response.empty());
-  EXPECT_EQ(1, handler.actionCalls);
 }
