@@ -29,7 +29,19 @@ Root integration shall later verify:
 
 No server-side COSEM object model is required for the first unit phase.
 
-## 3. Verification Commands
+## 3. Server-Side Normal GET Tests
+
+Required server boundary tests:
+
+- default GET indication carries confirmed normal-priority options;
+- invalid invoke id maps to `InvalidArgument`;
+- invalid logical-name descriptor maps to `InvalidArgument`;
+- dispatcher forwards descriptor and service options to the handler;
+- successful handler data response preserves request invoke id;
+- handler data-access-result response preserves request invoke id;
+- handler failure status is propagated without mutating unrelated result data.
+
+## 4. Verification Commands
 
 Use the existing workspace build directory when available:
 

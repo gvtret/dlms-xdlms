@@ -2,12 +2,13 @@
 
 ## 1. Public Headers
 
-Planned phase 1 headers:
+Public headers:
 
 ```text
 include/dlms/xdlms/xdlms_status.hpp
 include/dlms/xdlms/xdlms_types.hpp
 include/dlms/xdlms/xdlms_client.hpp
+include/dlms/xdlms/xdlms_server.hpp
 ```
 
 No C ABI is planned for the first implementation.
@@ -75,7 +76,48 @@ const dlms::xdlms::XdlmsStatus status = client.Get(descriptor, result);
 `XdlmsClient` does not own the association object and does not own the profile
 APDU channel. The caller must keep both alive for the client lifetime.
 
-## 5. Module Diagram
+## 5. Server
+
+The server-side boundary accepts decoded xDLMS service models and delegates the
+actual COSEM access to an embedding handler:
+
+```cpp
+class IXdlmsServerHandler {
+public:
+  virtual ~IXdlmsServerHandler() = default;
+
+  virtual XdlmsStatus HandleGet(const GetIndication& indication,
+                                GetResult& result) = 0;
+};
+```
+
+`GetIndication` contains:
+
+- `invokeId`
+- `options`
+- `descriptor`
+
+`XdlmsServerDispatcher` validates the indication, calls the handler, and keeps
+the response invoke id aligned with the request.
+
+```cpp
+dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+
+dlms::xdlms::GetIndication indication = {};
+indication.invokeId = 1;
+indication.descriptor.classId = 1;
+indication.descriptor.instanceId = dlms::xdlms::CosemLogicalName(0, 0, 1, 0, 0, 255);
+indication.descriptor.attributeId = 2;
+
+dlms::xdlms::GetResult result;
+const dlms::xdlms::XdlmsStatus status = dispatcher.DispatchGet(indication, result);
+```
+
+The handler contract is intentionally independent from `dlms-server`; the
+server repo can implement an adapter without making `dlms-xdlms` depend on
+higher layers.
+
+## 6. Module Diagram
 
 ```mermaid
 classDiagram
@@ -99,7 +141,26 @@ classDiagram
     +accessResult
   }
 
+  class GetIndication {
+    +invokeId
+    +options
+    +descriptor
+  }
+
+  class IXdlmsServerHandler {
+    +HandleGet(GetIndication, GetResult&) XdlmsStatus
+  }
+
+  class XdlmsServerDispatcher {
+    +DispatchGet(GetIndication, GetResult&) XdlmsStatus
+  }
+
   XdlmsClient --> InvokeIdAllocator
   XdlmsClient --> CosemAttributeDescriptor
   XdlmsClient --> GetResult
+  GetIndication --> ServiceOptions
+  GetIndication --> CosemAttributeDescriptor
+  XdlmsServerDispatcher --> IXdlmsServerHandler
+  XdlmsServerDispatcher --> GetIndication
+  XdlmsServerDispatcher --> GetResult
 ```

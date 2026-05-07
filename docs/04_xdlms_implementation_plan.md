@@ -69,3 +69,49 @@ Commit message:
 ```text
 build: add dlms-xdlms submodule
 ```
+
+## Phase 4. Server Normal GET Documentation
+
+Deliverables:
+
+- server-side normal GET requirements
+- `xdlms_server.hpp` API contract
+- server dispatcher architecture diagram
+- server boundary test plan
+- implementation phase split
+
+Commit message:
+
+```text
+docs(xdlms): define server normal get boundary
+```
+
+## Phase 5. Server Normal GET Contract
+
+Deliverables:
+
+- `GetIndication`
+- `IXdlmsServerHandler`
+- `XdlmsServerDispatcher`
+- validation for invoke id and attribute descriptor
+- tests for success, data-access-result, invalid input, and handler failure
+
+Commit message:
+
+```text
+feat(xdlms): add server normal get dispatcher
+```
+
+## Phase 6. Root Integration Update
+
+Deliverables:
+
+- root submodule pointer update
+- full workspace build and test run
+- commit message for the root repo
+
+Commit message:
+
+```text
+build: update dlms-xdlms server boundary
+```

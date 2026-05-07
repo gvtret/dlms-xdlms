@@ -5,19 +5,17 @@
 ```mermaid
 flowchart TD
   Facade["Future dlms-client"]
-  Server["Future dlms-server"]
+  Server["dlms-server adapter"]
   XDlms["lib/dlms-xdlms"]
   Association["lib/dlms-association"]
   Apdu["lib/dlms-apdu"]
   Profile["lib/dlms-profile"]
-  Cosem["lib/dlms-cosem"]
 
   Facade --> XDlms
   Server --> XDlms
   XDlms --> Association
   XDlms --> Apdu
   XDlms --> Profile
-  XDlms --> Cosem
 ```
 
 ## 2. Normal GET Flow
@@ -62,15 +60,17 @@ classDiagram
   }
 
   class XdlmsServerDispatcher {
-    +DispatchGet() XdlmsStatus
-    +DispatchSet() XdlmsStatus
-    +DispatchAction() XdlmsStatus
+    +DispatchGet(GetIndication, GetResult&) XdlmsStatus
   }
 
-  class CosemAccessPort {
-    +ReadAttribute()
-    +WriteAttribute()
-    +InvokeMethod()
+  class IXdlmsServerHandler {
+    +HandleGet(GetIndication, GetResult&) XdlmsStatus
+  }
+
+  class GetIndication {
+    +invokeId
+    +options
+    +descriptor
   }
 
   class dlms_apdu {
@@ -82,18 +82,40 @@ classDiagram
   XdlmsClient --> IApduChannel
   XdlmsClient --> InvokeIdAllocator
   XdlmsClient --> dlms_apdu
-  XdlmsServerDispatcher --> CosemAccessPort
-  XdlmsServerDispatcher --> dlms_apdu
+  XdlmsServerDispatcher --> IXdlmsServerHandler
+  XdlmsServerDispatcher --> GetIndication
+  XdlmsServerDispatcher --> GetResult
 ```
 
-## 4. Ownership
+## 4. Server Normal GET Flow
+
+```mermaid
+sequenceDiagram
+  participant Apdu as APDU Decoder Boundary
+  participant Dispatcher as XdlmsServerDispatcher
+  participant Handler as IXdlmsServerHandler
+  participant Server as dlms-server Adapter
+
+  Apdu->>Dispatcher: DispatchGet(indication)
+  Dispatcher->>Dispatcher: Validate invoke id and descriptor
+  Dispatcher->>Handler: HandleGet(indication, result)
+  Handler->>Server: Read attribute through server model
+  Server-->>Handler: encoded data or access result
+  Handler-->>Dispatcher: XdlmsStatus
+  Dispatcher-->>Apdu: GetResult with matching invoke id
+```
+
+`dlms-xdlms` owns the xDLMS request and response shape. The embedding server
+layer owns association policy, COSEM object access, and access-right decisions.
+
+## 5. Ownership
 
 `XdlmsClient` stores non-owning references to the association and profile APDU
-channel boundaries. Server dispatch stores non-owning access to a COSEM access
-port. The layer does not own transport resources, association lifetime, or
+channel boundaries. Server dispatch stores non-owning access to an xDLMS server
+handler. The layer does not own transport resources, association lifetime, or
 COSEM object storage.
 
-## 5. Error Model
+## 6. Error Model
 
 The layer returns status codes only. Runtime API paths do not throw exceptions.
 Failures are reported at the xDLMS service boundary and do not close or release
