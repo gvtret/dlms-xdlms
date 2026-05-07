@@ -117,7 +117,39 @@ The handler contract is intentionally independent from `dlms-server`; the
 server repo can implement an adapter without making `dlms-xdlms` depend on
 higher layers.
 
-## 6. Module Diagram
+## 6. Server APDU Boundary
+
+`XdlmsServerApduProcessor` decodes an unprotected xDLMS APDU, dispatches the
+GET indication, and encodes the GET response:
+
+```cpp
+dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
+
+std::vector<std::uint8_t> response;
+const dlms::xdlms::XdlmsStatus status =
+  processor.ProcessRequest(requestApdu, response);
+```
+
+`ProcessRequest` clears `response` before work starts and writes response bytes
+only when encoding succeeds.
+
+Supported first APDU shape:
+
+- input: GET-REQUEST-NORMAL, no selective access;
+- output: GET-RESPONSE-NORMAL with either data or data-access-result.
+
+Unsupported first APDU shapes:
+
+- GET-NEXT;
+- GET-WITH-LIST;
+- selective access;
+- SET;
+- ACTION;
+- ciphered APDUs;
+- ACSE APDUs.
+
+## 7. Module Diagram
 
 ```mermaid
 classDiagram
@@ -155,6 +187,10 @@ classDiagram
     +DispatchGet(GetIndication, GetResult&) XdlmsStatus
   }
 
+  class XdlmsServerApduProcessor {
+    +ProcessRequest(vector~uint8_t~, vector~uint8_t~&) XdlmsStatus
+  }
+
   XdlmsClient --> InvokeIdAllocator
   XdlmsClient --> CosemAttributeDescriptor
   XdlmsClient --> GetResult
@@ -163,4 +199,5 @@ classDiagram
   XdlmsServerDispatcher --> IXdlmsServerHandler
   XdlmsServerDispatcher --> GetIndication
   XdlmsServerDispatcher --> GetResult
+  XdlmsServerApduProcessor --> XdlmsServerDispatcher
 ```

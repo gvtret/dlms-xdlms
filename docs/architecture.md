@@ -108,14 +108,39 @@ sequenceDiagram
 `dlms-xdlms` owns the xDLMS request and response shape. The embedding server
 layer owns association policy, COSEM object access, and access-right decisions.
 
-## 5. Ownership
+## 5. Server APDU GET Flow
+
+```mermaid
+sequenceDiagram
+  participant Caller as Profile or Association Boundary
+  participant Processor as XdlmsServerApduProcessor
+  participant Apdu as dlms-apdu
+  participant Dispatcher as XdlmsServerDispatcher
+  participant Handler as IXdlmsServerHandler
+
+  Caller->>Processor: ProcessRequest(requestApdu)
+  Processor->>Apdu: DecodeXdlmsApdu
+  Processor->>Processor: Require GET-REQUEST-NORMAL
+  Processor->>Dispatcher: DispatchGet(indication)
+  Dispatcher->>Handler: HandleGet(indication, result)
+  Handler-->>Dispatcher: data or data-access-result
+  Dispatcher-->>Processor: GetResult
+  Processor->>Apdu: Encode GET-RESPONSE-NORMAL
+  Processor-->>Caller: responseApdu
+```
+
+The processor handles xDLMS service bytes only. Profile framing, ACSE
+association state, and ciphered APDU protection are still owned by adjacent
+layers.
+
+## 6. Ownership
 
 `XdlmsClient` stores non-owning references to the association and profile APDU
 channel boundaries. Server dispatch stores non-owning access to an xDLMS server
 handler. The layer does not own transport resources, association lifetime, or
 COSEM object storage.
 
-## 6. Error Model
+## 7. Error Model
 
 The layer returns status codes only. Runtime API paths do not throw exceptions.
 Failures are reported at the xDLMS service boundary and do not close or release

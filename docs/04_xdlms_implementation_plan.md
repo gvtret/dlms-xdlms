@@ -115,3 +115,50 @@ Commit message:
 ```text
 build: update dlms-xdlms server boundary
 ```
+
+## Phase 7. Server APDU GET Documentation
+
+Deliverables:
+
+- APDU-level server GET requirements
+- `XdlmsServerApduProcessor` API contract
+- APDU decode/dispatch/encode sequence diagram
+- APDU boundary test plan
+- implementation phase split
+
+Commit message:
+
+```text
+docs(xdlms): define server get apdu boundary
+```
+
+## Phase 8. Server APDU GET Processor
+
+Deliverables:
+
+- `XdlmsServerApduProcessor`
+- GET-REQUEST-NORMAL decode to `GetIndication`
+- GET-RESPONSE-NORMAL encode from `GetResult`
+- rejection for unsupported APDU shapes
+- tests for success, access result, malformed input, unsupported services, and
+  handler failures
+
+Commit message:
+
+```text
+feat(xdlms): process server get apdus
+```
+
+## Phase 9. Root Integration Update
+
+Deliverables:
+
+- root submodule pointer update
+- full workspace build and test run
+- commit message for the root repo
+
+Commit message:
+
+```text
+build: update dlms-xdlms server apdu boundary
+```

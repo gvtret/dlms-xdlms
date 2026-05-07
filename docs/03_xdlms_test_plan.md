@@ -41,7 +41,20 @@ Required server boundary tests:
 - handler data-access-result response preserves request invoke id;
 - handler failure status is propagated without mutating unrelated result data.
 
-## 4. Verification Commands
+## 4. Server-Side APDU GET Tests
+
+Required APDU boundary tests:
+
+- GET-REQUEST-NORMAL decodes to a `GetIndication`;
+- successful handler data response encodes GET-RESPONSE-NORMAL;
+- data-access-result response encodes GET-RESPONSE-NORMAL access result;
+- response invoke id and priority mirror the request;
+- malformed APDU maps to `DecodeFailed`;
+- non-GET APDU maps to `UnsupportedFeature`;
+- GET-NEXT, GET-WITH-LIST, and selective access map to `UnsupportedFeature`;
+- handler failure leaves response output empty.
+
+## 5. Verification Commands
 
 Use the existing workspace build directory when available:
 

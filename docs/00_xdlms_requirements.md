@@ -65,7 +65,32 @@ Rules:
 The `dlms-server` repo may later provide an adapter from this abstract handler
 contract to the COSEM logical device dispatcher.
 
-## 5. State Requirements
+## 5. Server-Side Normal GET APDU Boundary
+
+The next APDU boundary shall process already unprotected xDLMS APDU bytes for
+GET-REQUEST-NORMAL and produce GET-RESPONSE-NORMAL bytes.
+
+Rules:
+
+- decode exactly one xDLMS APDU from caller-provided bytes;
+- accept only GET-REQUEST-NORMAL without selective access;
+- reject GET-NEXT, GET-WITH-LIST, block-transfer, selective access, SET,
+  ACTION, ciphered APDUs, and ACSE APDUs as unsupported or decode failures;
+- derive invoke id, priority, and service-class bits from
+  invoke-id-and-priority;
+- dispatch through `XdlmsServerDispatcher`;
+- copy the request invoke id and priority into the response;
+- encode either xDLMS data bytes from the handler or data-access-result;
+- avoid transport, association, security, and COSEM dependencies.
+
+Document RAG alignment:
+
+- the server copies the Invoke_Id into the corresponding response;
+- the response carries the same priority flag as the corresponding request;
+- unprotected APDU handling is valid only after the association/security layer
+  has accepted the request context.
+
+## 6. State Requirements
 
 The client implementation shall be stateless except for invoke-id allocation.
 The server boundary shall be stateless and store only non-owning handler
@@ -83,17 +108,18 @@ Rules:
 - block-transfer responses return `BlockTransferRequired` until a block
   manager is implemented.
 
-## 6. Security Boundary
+## 7. Security Boundary
 
 The v1 layer shall not protect or unprotect ciphered APDUs. Security options
 may be modeled later, but actual ciphering belongs in `dlms-security`.
 
-## 7. Out of Scope
+## 8. Out of Scope
 
 - association opening and release;
 - Wrapper, HDLC, LLC, TCP, UDP, and serial transport ownership;
 - SET and ACTION services;
 - server-side SET and ACTION dispatch implementation;
+- server-side GET-NEXT, GET-WITH-LIST, and block transfer;
 - COSEM object access implementation inside `dlms-xdlms`;
 - GET-WITH-LIST;
 - GET-NEXT and block transfer;
