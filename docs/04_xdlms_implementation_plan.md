@@ -257,3 +257,80 @@ Commit message:
 ```text
 build: update dlms-xdlms server set apdu boundary
 ```
+
+## Phase 16. Server ACTION Documentation
+
+Deliverables:
+
+- server-side ACTION APDU requirements
+- `ActionIndication` API contract
+- server ACTION dispatch sequence diagram
+- server ACTION boundary test plan
+
+Commit message:
+
+```text
+docs(xdlms): define server action apdu boundary
+```
+
+## Phase 17. Server ACTION APDU Processor
+
+Deliverables:
+
+- ACTION-REQUEST-NORMAL decode to `ActionIndication`
+- encoded invocation parameter preservation
+- ACTION-RESPONSE-NORMAL encode from `ActionResult`
+- rejection for unsupported ACTION APDU shapes
+- tests for success, action result, return data, no parameter, malformed input,
+  unsupported services, and handler failures
+
+Commit message:
+
+```text
+feat(xdlms): add server action apdu boundary
+```
+
+## Phase 18. Root Integration Update
+
+Deliverables:
+
+- root submodule pointer update
+- full workspace build and test run
+- root integration tests for ACTION APDU reaching a COSEM object method
+
+Commit message:
+
+```text
+test: cover server action apdu integration
+```
+
+## Phase 19. Client SET/ACTION Documentation
+
+Deliverables:
+
+- client-side SET/ACTION requirements
+- `XdlmsClient::Set` and `XdlmsClient::Action` API contract
+- client SET/ACTION architecture and sequence diagrams
+- client SET/ACTION test plan
+
+Commit message:
+
+```text
+docs(xdlms): define client set action boundary
+```
+
+## Phase 20. Client SET/ACTION Flow
+
+Deliverables:
+
+- confirmed `SET-REQUEST-NORMAL` encode and `SET-RESPONSE-NORMAL` decode
+- confirmed `ACTION-REQUEST-NORMAL` encode and `ACTION-RESPONSE-NORMAL` decode
+- encoded DLMS `Data` byte preservation for SET values, ACTION parameters, and
+  ACTION return parameters
+- fake-channel tests for success and error mappings
+
+Commit message:
+
+```text
+feat(xdlms): implement client set action flow
+```
