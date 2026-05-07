@@ -1,4 +1,4 @@
-# dlms-xdlms-client Test Plan
+# dlms-xdlms Test Plan
 
 ## 1. Unit Tests
 
@@ -41,6 +41,6 @@ ctest --test-dir <build-dir> --output-on-failure
 Targeted checks after phase 1:
 
 ```text
-cmake --build <build-dir> --target dlms_xdlms_client_tests
-ctest --test-dir <build-dir> -R XdlmsClient --output-on-failure
+cmake --build <build-dir> --target dlms_xdlms_tests
+ctest --test-dir <build-dir> -R Xdlms --output-on-failure
 ```

@@ -1,7 +1,7 @@
-#include "dlms/xdlms_client/xdlms_client_types.hpp"
+#include "dlms/xdlms/xdlms_types.hpp"
 
 namespace dlms {
-namespace xdlms_client {
+namespace xdlms {
 
 CosemLogicalName::CosemLogicalName()
 {
@@ -84,11 +84,11 @@ GetResult EmptyGetResult()
   return result;
 }
 
-XdlmsClientStatus ValidateDescriptor(
+XdlmsStatus ValidateDescriptor(
   const CosemAttributeDescriptor& descriptor)
 {
   if (descriptor.classId == 0 || descriptor.attributeId == 0) {
-    return XdlmsClientStatus::InvalidArgument;
+    return XdlmsStatus::InvalidArgument;
   }
 
   bool hasAnyInstanceByte = false;
@@ -100,9 +100,9 @@ XdlmsClientStatus ValidateDescriptor(
   }
 
   return hasAnyInstanceByte
-    ? XdlmsClientStatus::Ok
-    : XdlmsClientStatus::InvalidArgument;
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::InvalidArgument;
 }
 
-} // namespace xdlms_client
+} // namespace xdlms
 } // namespace dlms

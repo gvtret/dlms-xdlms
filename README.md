@@ -1,7 +1,8 @@
-# dlms-xdlms-client
+# dlms-xdlms
 
-`dlms-xdlms-client` will provide high-level client-side xDLMS service calls
-over an already established DLMS/COSEM association.
+`dlms-xdlms` will provide high-level xDLMS service orchestration over an
+already established DLMS/COSEM association. The repo is the shared home for
+client request flows and server-side GET/SET/ACTION dispatch contracts.
 
 The first implementation target is a normal LN GET request/response flow:
 
@@ -22,8 +23,8 @@ ctest --test-dir build
 
 ## Documentation
 
-- [Requirements](docs/00_xdlms_client_requirements.md)
-- [API](docs/01_xdlms_client_api.md)
-- [Test Plan](docs/03_xdlms_client_test_plan.md)
+- [Requirements](docs/00_xdlms_requirements.md)
+- [API](docs/01_xdlms_api.md)
+- [Test Plan](docs/03_xdlms_test_plan.md)
 - [Architecture](docs/architecture.md)
-- [Implementation Plan](docs/04_xdlms_client_implementation_plan.md)
+- [Implementation Plan](docs/04_xdlms_implementation_plan.md)

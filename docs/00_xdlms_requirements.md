@@ -1,17 +1,19 @@
-# dlms-xdlms-client Requirements
+# dlms-xdlms Requirements
 
 ## 1. Scope
 
-The xDLMS client layer owns client-side service orchestration after an
-application association has already been established.
+The xDLMS layer owns service orchestration after an application association has
+already been established. It is the shared boundary for client request flows
+and server-side GET/SET/ACTION dispatch contracts.
 
 The layer shall:
 
-- expose high-level LN service calls for GET, then later SET and ACTION;
+- expose high-level LN client service calls for GET, then later SET and ACTION;
+- define server-side service dispatch contracts for GET, SET, and ACTION;
 - use `dlms-association` only as the established association boundary;
 - use `dlms-apdu` for xDLMS APDU encode/decode;
 - keep lower profile and transport ownership delegated to lower layers;
-- keep COSEM object storage and server dispatch out of this repo;
+- keep COSEM object storage and method execution out of this repo;
 - keep public ergonomic connection setup out of this repo.
 
 ## 2. Normative Model
@@ -31,7 +33,8 @@ Document RAG references:
 
 ## 3. First Implementation
 
-Version 1 implements only confirmed GET-REQUEST-NORMAL over LN referencing:
+Version 1 implements only the client side of confirmed GET-REQUEST-NORMAL over
+LN referencing:
 
 1. The caller provides an associated `AssociationClient` and a profile APDU
    channel boundary.
@@ -67,6 +70,7 @@ may be modeled later, but actual ciphering belongs in `dlms-security`.
 - association opening and release;
 - Wrapper, HDLC, LLC, TCP, UDP, and serial transport ownership;
 - SET and ACTION services;
+- server-side GET, SET, and ACTION dispatch implementation;
 - GET-WITH-LIST;
 - GET-NEXT and block transfer;
 - selective access parameters;

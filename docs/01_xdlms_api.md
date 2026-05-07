@@ -1,20 +1,20 @@
-# dlms-xdlms-client API
+# dlms-xdlms API
 
 ## 1. Public Headers
 
 Planned phase 1 headers:
 
 ```text
-include/dlms/xdlms_client/xdlms_client.hpp
-include/dlms/xdlms_client/xdlms_client_status.hpp
-include/dlms/xdlms_client/xdlms_client_types.hpp
+include/dlms/xdlms/xdlms_status.hpp
+include/dlms/xdlms/xdlms_types.hpp
+include/dlms/xdlms/xdlms_client.hpp
 ```
 
 No C ABI is planned for the first implementation.
 
 ## 2. Status
 
-`XdlmsClientStatus` shall be a stable status contract:
+`XdlmsStatus` shall be a stable status contract:
 
 - `Ok`
 - `InvalidArgument`
@@ -61,15 +61,15 @@ projection belongs to later service/facade work.
 ## 4. Client
 
 ```cpp
-dlms::xdlms_client::XdlmsClient client(channel, association);
+dlms::xdlms::XdlmsClient client(channel, association);
 
-dlms::xdlms_client::CosemAttributeDescriptor descriptor = {};
+dlms::xdlms::CosemAttributeDescriptor descriptor = {};
 descriptor.classId = 1;
-descriptor.instanceId = dlms::xdlms_client::CosemLogicalName(0, 0, 1, 0, 0, 255);
+descriptor.instanceId = dlms::xdlms::CosemLogicalName(0, 0, 1, 0, 0, 255);
 descriptor.attributeId = 2;
 
-dlms::xdlms_client::GetResult result;
-const XdlmsClientStatus status = client.Get(descriptor, result);
+dlms::xdlms::GetResult result;
+const dlms::xdlms::XdlmsStatus status = client.Get(descriptor, result);
 ```
 
 `XdlmsClient` does not own the association object and does not own the profile
@@ -80,7 +80,7 @@ APDU channel. The caller must keep both alive for the client lifetime.
 ```mermaid
 classDiagram
   class XdlmsClient {
-    +Get(CosemAttributeDescriptor, GetResult&) XdlmsClientStatus
+    +Get(CosemAttributeDescriptor, GetResult&) XdlmsStatus
   }
 
   class InvokeIdAllocator {

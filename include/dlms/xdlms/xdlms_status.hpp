@@ -1,9 +1,9 @@
 #pragma once
 
 namespace dlms {
-namespace xdlms_client {
+namespace xdlms {
 
-enum class XdlmsClientStatus
+enum class XdlmsStatus
 {
   Ok,
   InvalidArgument,
@@ -20,7 +20,7 @@ enum class XdlmsClientStatus
   InternalError
 };
 
-const char* XdlmsClientStatusName(XdlmsClientStatus status);
+const char* XdlmsStatusName(XdlmsStatus status);
 
-} // namespace xdlms_client
+} // namespace xdlms
 } // namespace dlms

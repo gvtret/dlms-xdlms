@@ -1,19 +1,23 @@
-# dlms-xdlms-client Architecture
+# dlms-xdlms Architecture
 
 ## 1. Layer Position
 
 ```mermaid
 flowchart TD
   Facade["Future dlms-client"]
-  XClient["lib/dlms-xdlms-client"]
+  Server["Future dlms-server"]
+  XDlms["lib/dlms-xdlms"]
   Association["lib/dlms-association"]
   Apdu["lib/dlms-apdu"]
   Profile["lib/dlms-profile"]
+  Cosem["lib/dlms-cosem"]
 
-  Facade --> XClient
-  XClient --> Association
-  XClient --> Apdu
-  XClient --> Profile
+  Facade --> XDlms
+  Server --> XDlms
+  XDlms --> Association
+  XDlms --> Apdu
+  XDlms --> Profile
+  XDlms --> Cosem
 ```
 
 ## 2. Normal GET Flow
@@ -41,7 +45,7 @@ sequenceDiagram
 ```mermaid
 classDiagram
   class XdlmsClient {
-    +Get(CosemAttributeDescriptor, GetResult&) XdlmsClientStatus
+    +Get(CosemAttributeDescriptor, GetResult&) XdlmsStatus
   }
 
   class AssociationClient {
@@ -57,6 +61,18 @@ classDiagram
     +Next() uint8_t
   }
 
+  class XdlmsServerDispatcher {
+    +DispatchGet() XdlmsStatus
+    +DispatchSet() XdlmsStatus
+    +DispatchAction() XdlmsStatus
+  }
+
+  class CosemAccessPort {
+    +ReadAttribute()
+    +WriteAttribute()
+    +InvokeMethod()
+  }
+
   class dlms_apdu {
     +EncodeXdlmsApdu()
     +DecodeXdlmsApdu()
@@ -66,13 +82,16 @@ classDiagram
   XdlmsClient --> IApduChannel
   XdlmsClient --> InvokeIdAllocator
   XdlmsClient --> dlms_apdu
+  XdlmsServerDispatcher --> CosemAccessPort
+  XdlmsServerDispatcher --> dlms_apdu
 ```
 
 ## 4. Ownership
 
 `XdlmsClient` stores non-owning references to the association and profile APDU
-channel boundaries. It does not own transport resources, association lifetime,
-or COSEM object storage.
+channel boundaries. Server dispatch stores non-owning access to a COSEM access
+port. The layer does not own transport resources, association lifetime, or
+COSEM object storage.
 
 ## 5. Error Model
 

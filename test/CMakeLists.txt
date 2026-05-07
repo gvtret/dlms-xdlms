@@ -9,13 +9,13 @@ elseif(NOT TARGET GTest::gtest_main)
   FetchContent_MakeAvailable(googletest)
 endif()
 
-add_executable(dlms_xdlms_client_tests
-  xdlms_client/test_xdlms_client_types.cpp)
+add_executable(dlms_xdlms_tests
+  xdlms/test_xdlms_types.cpp)
 
-target_link_libraries(dlms_xdlms_client_tests
+target_link_libraries(dlms_xdlms_tests
   PRIVATE
-    dlms_xdlms_client
+    dlms_xdlms
     GTest::gtest_main)
 
 include(GoogleTest)
-gtest_discover_tests(dlms_xdlms_client_tests)
+gtest_discover_tests(dlms_xdlms_tests)

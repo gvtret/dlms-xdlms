@@ -1,4 +1,4 @@
-# dlms-xdlms-client Implementation Plan
+# dlms-xdlms Implementation Plan
 
 ## Phase 0. Documentation
 
@@ -13,15 +13,19 @@ Deliverables:
 Commit message:
 
 ```text
-docs(xdlms-client): define normal get client layer
+docs(xdlms): define normal get client layer
 ```
+
+The first implementation remains client-side normal GET. Later phases will add
+SET, ACTION, block transfer, and server-side dispatch contracts in the same
+`dlms-xdlms` repo.
 
 ## Phase 1. Normal GET Types And Test Harness
 
 Deliverables:
 
 - CMake project and GoogleTest harness
-- `XdlmsClientStatus`
+- `XdlmsStatus`
 - `CosemLogicalName`
 - `CosemAttributeDescriptor`
 - `ServiceOptions`
@@ -32,7 +36,7 @@ Deliverables:
 Commit message:
 
 ```text
-feat(xdlms-client): add normal get service types
+feat(xdlms): add normal get service types
 ```
 
 ## Phase 2. Normal GET Request/Response
@@ -48,7 +52,7 @@ Deliverables:
 Commit message:
 
 ```text
-feat(xdlms-client): implement normal get flow
+feat(xdlms): implement normal get flow
 ```
 
 ## Phase 3. Root Integration
@@ -63,5 +67,5 @@ Deliverables:
 Commit message:
 
 ```text
-build: add dlms-xdlms-client submodule
+build: add dlms-xdlms submodule
 ```

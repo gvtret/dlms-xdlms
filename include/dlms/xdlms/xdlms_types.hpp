@@ -1,13 +1,13 @@
 #pragma once
 
-#include "dlms/xdlms_client/xdlms_client_status.hpp"
+#include "dlms/xdlms/xdlms_status.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <vector>
 
 namespace dlms {
-namespace xdlms_client {
+namespace xdlms {
 
 class CosemLogicalName
 {
@@ -65,8 +65,8 @@ private:
 ServiceOptions DefaultServiceOptions();
 CosemAttributeDescriptor EmptyCosemAttributeDescriptor();
 GetResult EmptyGetResult();
-XdlmsClientStatus ValidateDescriptor(
+XdlmsStatus ValidateDescriptor(
   const CosemAttributeDescriptor& descriptor);
 
-} // namespace xdlms_client
+} // namespace xdlms
 } // namespace dlms
