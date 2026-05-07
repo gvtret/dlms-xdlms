@@ -9,6 +9,7 @@ option(DLMS_USE_SYSTEM_GTEST "Use system-installed GoogleTest" OFF)
 
 add_library(dlms_xdlms
   src/xdlms/xdlms_client.cpp
+  src/xdlms/xdlms_server.cpp
   src/xdlms/xdlms_status.cpp
   src/xdlms/xdlms_types.cpp)
 

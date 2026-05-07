@@ -11,6 +11,7 @@ endif()
 
 add_executable(dlms_xdlms_tests
   xdlms/test_xdlms_client.cpp
+  xdlms/test_xdlms_server.cpp
   xdlms/test_xdlms_types.cpp)
 
 target_link_libraries(dlms_xdlms_tests
