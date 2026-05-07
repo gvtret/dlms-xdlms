@@ -70,7 +70,25 @@ Required server boundary tests:
 - default GET-only handler SET support maps to `UnsupportedFeature`;
 - handler failure status is propagated without mutating unrelated result data.
 
-## 6. Verification Commands
+## 6. Server-Side APDU SET Tests
+
+Required APDU boundary tests:
+
+- SET-REQUEST-NORMAL decodes to a `SetIndication`;
+- successful handler result encodes SET-RESPONSE-NORMAL success;
+- access-result response encodes SET-RESPONSE-NORMAL access result;
+- response invoke id and priority mirror the request;
+- encoded request value bytes are preserved in `SetIndication::data`;
+- unconfirmed SET request maps to `UnsupportedFeature`;
+- malformed APDU maps to `DecodeFailed`;
+- GET and ACTION APDUs that are not otherwise supported map to
+  `UnsupportedFeature`;
+- SET-WITH-FIRST-DATABLOCK, SET-WITH-DATABLOCK, SET-WITH-LIST,
+  SET-WITH-LIST-AND-FIRST-DATABLOCK, and selective access map to
+  `UnsupportedFeature`;
+- handler failure leaves response output empty.
+
+## 7. Verification Commands
 
 Use the existing workspace build directory when available:
 

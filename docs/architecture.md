@@ -155,14 +155,40 @@ sequenceDiagram
 server layer owns write authorization, object lookup, and actual attribute
 mutation.
 
-## 7. Ownership
+## 7. Server APDU SET Flow
+
+```mermaid
+sequenceDiagram
+  participant Caller as Profile or Association Boundary
+  participant Processor as XdlmsServerApduProcessor
+  participant Apdu as dlms-apdu
+  participant Dispatcher as XdlmsServerDispatcher
+  participant Handler as IXdlmsServerHandler
+
+  Caller->>Processor: ProcessRequest(requestApdu)
+  Processor->>Apdu: DecodeXdlmsApdu
+  Processor->>Processor: Require SET-REQUEST-NORMAL
+  Processor->>Processor: Re-encode request value Data bytes
+  Processor->>Dispatcher: DispatchSet(indication)
+  Dispatcher->>Handler: HandleSet(indication, result)
+  Handler-->>Dispatcher: data-access-result
+  Dispatcher-->>Processor: SetResult
+  Processor->>Apdu: Encode SET-RESPONSE-NORMAL
+  Processor-->>Caller: responseApdu
+```
+
+The processor does not evaluate write permissions and does not decode the
+semantic COSEM value. It only preserves the xDLMS `Data` bytes across the APDU
+and decoded-dispatch boundary.
+
+## 8. Ownership
 
 `XdlmsClient` stores non-owning references to the association and profile APDU
 channel boundaries. Server dispatch stores non-owning access to an xDLMS server
 handler. The layer does not own transport resources, association lifetime, or
 COSEM object storage.
 
-## 8. Error Model
+## 9. Error Model
 
 The layer returns status codes only. Runtime API paths do not throw exceptions.
 Failures are reported at the xDLMS service boundary and do not close or release

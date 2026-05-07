@@ -210,3 +210,50 @@ Commit message:
 ```text
 build: update dlms-xdlms set boundary
 ```
+
+## Phase 13. Server APDU SET Documentation
+
+Deliverables:
+
+- APDU-level server SET requirements
+- `XdlmsServerApduProcessor` API contract update
+- APDU decode/dispatch/encode sequence diagram
+- APDU SET boundary test plan
+- implementation phase split
+
+Commit message:
+
+```text
+docs(xdlms): define server set apdu boundary
+```
+
+## Phase 14. Server APDU SET Processor
+
+Deliverables:
+
+- SET-REQUEST-NORMAL decode to `SetIndication`
+- encoded `Data` byte preservation for `SetIndication::data`
+- SET-RESPONSE-NORMAL encode from `SetResult`
+- rejection for unsupported SET APDU shapes
+- tests for success, access result, malformed input, unsupported services,
+  value forwarding, and handler failures
+
+Commit message:
+
+```text
+feat(xdlms): process server set apdus
+```
+
+## Phase 15. Root Integration Update
+
+Deliverables:
+
+- root submodule pointer update
+- full workspace build and test run
+- commit message for the root repo
+
+Commit message:
+
+```text
+build: update dlms-xdlms server set apdu boundary
+```

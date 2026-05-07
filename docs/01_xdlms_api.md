@@ -154,7 +154,7 @@ higher layers.
 ## 6. Server APDU Boundary
 
 `XdlmsServerApduProcessor` decodes an unprotected xDLMS APDU, dispatches the
-GET indication, and encodes the GET response:
+GET or SET indication, and encodes the corresponding response:
 
 ```cpp
 dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
@@ -172,13 +172,18 @@ Supported first APDU shape:
 
 - input: GET-REQUEST-NORMAL, no selective access;
 - output: GET-RESPONSE-NORMAL with either data or data-access-result.
+- input: SET-REQUEST-NORMAL, no selective access;
+- output: SET-RESPONSE-NORMAL with data-access-result.
 
 Unsupported first APDU shapes:
 
 - GET-NEXT;
 - GET-WITH-LIST;
+- SET-WITH-FIRST-DATABLOCK;
+- SET-WITH-DATABLOCK;
+- SET-WITH-LIST;
+- SET-WITH-LIST-AND-FIRST-DATABLOCK;
 - selective access;
-- SET;
 - ACTION;
 - ciphered APDUs;
 - ACSE APDUs.
