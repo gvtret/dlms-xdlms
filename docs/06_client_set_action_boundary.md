@@ -74,9 +74,9 @@ Status mapping:
 
 | Condition | Status |
 |---|---|
-| Invalid descriptor | `InvalidDescriptor` |
-| Empty SET value | `InvalidData` |
-| Present but empty ACTION parameter | `InvalidData` |
+| Invalid descriptor | `InvalidArgument` |
+| Empty SET value | `InvalidArgument` |
+| Present but empty ACTION parameter | `InvalidArgument` |
 | Association is not open | `NotAssociated` |
 | APDU encode failure | `EncodeFailed` |
 | Channel send failure | `SendFailed` |

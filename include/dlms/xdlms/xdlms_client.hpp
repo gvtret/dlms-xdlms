@@ -18,6 +18,17 @@ public:
     const CosemAttributeDescriptor& descriptor,
     GetResult& result);
 
+  XdlmsStatus Set(
+    const CosemAttributeDescriptor& descriptor,
+    const std::vector<std::uint8_t>& encodedData,
+    SetResult& result);
+
+  XdlmsStatus Action(
+    const CosemMethodDescriptor& descriptor,
+    bool hasParameter,
+    const std::vector<std::uint8_t>& encodedParameter,
+    ActionResult& result);
+
 private:
   XdlmsClient(const XdlmsClient&);
   XdlmsClient& operator=(const XdlmsClient&);

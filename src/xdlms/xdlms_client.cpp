@@ -1,8 +1,10 @@
 #include "dlms/xdlms/xdlms_client.hpp"
 
+#include "dlms/apdu/action.hpp"
 #include "dlms/apdu/apdu_writer.hpp"
 #include "dlms/apdu/data.hpp"
 #include "dlms/apdu/get.hpp"
+#include "dlms/apdu/set.hpp"
 #include "dlms/apdu/xdlms.hpp"
 
 namespace dlms {
@@ -35,6 +37,47 @@ dlms::apdu::LogicalName ToApduLogicalName(
     logicalName[5]);
 }
 
+dlms::apdu::CosemAttributeDescriptor ToApduDescriptor(
+  const CosemAttributeDescriptor& descriptor)
+{
+  dlms::apdu::CosemAttributeDescriptor apduDescriptor;
+  apduDescriptor.classId = descriptor.classId;
+  for (std::size_t i = 0; i < descriptor.instanceId.Size(); ++i) {
+    apduDescriptor.logicalName[i] = descriptor.instanceId[i];
+  }
+  apduDescriptor.attributeId = descriptor.attributeId;
+  return apduDescriptor;
+}
+
+dlms::apdu::CosemMethodDescriptor ToApduDescriptor(
+  const CosemMethodDescriptor& descriptor)
+{
+  dlms::apdu::CosemMethodDescriptor apduDescriptor;
+  apduDescriptor.classId = descriptor.classId;
+  for (std::size_t i = 0; i < descriptor.instanceId.Size(); ++i) {
+    apduDescriptor.logicalName[i] = descriptor.instanceId[i];
+  }
+  apduDescriptor.methodId = descriptor.methodId;
+  return apduDescriptor;
+}
+
+XdlmsStatus DecodeEncodedData(
+  const std::vector<std::uint8_t>& encodedData,
+  dlms::apdu::DlmsData& output)
+{
+  if (encodedData.empty()) {
+    return XdlmsStatus::InvalidArgument;
+  }
+
+  return dlms::apdu::DecodeDlmsData(
+      &encodedData[0],
+      encodedData.size(),
+      8,
+      output) == dlms::apdu::ApduStatus::Ok
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::EncodeFailed;
+}
+
 XdlmsStatus CopyEncodedData(
   const dlms::apdu::DlmsData& data,
   GetResult& result)
@@ -50,6 +93,54 @@ XdlmsStatus CopyEncodedData(
   result.data.assign(buffer, buffer + writer.WrittenSize());
   result.hasData = true;
   return XdlmsStatus::Ok;
+}
+
+XdlmsStatus CopyEncodedData(
+  const dlms::apdu::DlmsData& data,
+  ActionResult& result)
+{
+  std::uint8_t buffer[2048] = {};
+  dlms::apdu::ApduWriter writer(buffer, sizeof(buffer));
+  const dlms::apdu::ApduStatus status =
+    dlms::apdu::EncodeDlmsData(data, writer);
+  if (status != dlms::apdu::ApduStatus::Ok) {
+    return XdlmsStatus::DecodeFailed;
+  }
+
+  result.data.assign(buffer, buffer + writer.WrittenSize());
+  result.hasData = true;
+  return XdlmsStatus::Ok;
+}
+
+XdlmsStatus SendAndReceive(
+  dlms::profile::IApduChannel& channel,
+  const dlms::apdu::XdlmsApdu& request,
+  dlms::apdu::XdlmsApdu& response)
+{
+  std::vector<std::uint8_t> encodedRequest;
+  if (dlms::apdu::EncodeXdlmsApdu(request, encodedRequest) !=
+      dlms::apdu::ApduStatus::Ok) {
+    return XdlmsStatus::EncodeFailed;
+  }
+
+  dlms::profile::ProfileByteView view = {};
+  view.data = encodedRequest.empty() ? 0 : &encodedRequest[0];
+  view.size = encodedRequest.size();
+  if (channel.SendApdu(view) != dlms::profile::ProfileStatus::Ok) {
+    return XdlmsStatus::SendFailed;
+  }
+
+  std::vector<std::uint8_t> encodedResponse;
+  if (channel.ReceiveApdu(encodedResponse) != dlms::profile::ProfileStatus::Ok) {
+    return XdlmsStatus::ReceiveFailed;
+  }
+
+  return dlms::apdu::DecodeXdlmsApdu(
+      encodedResponse.empty() ? 0 : &encodedResponse[0],
+      encodedResponse.size(),
+      response) == dlms::apdu::ApduStatus::Ok
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::DecodeFailed;
 }
 
 } // namespace
@@ -88,30 +179,10 @@ XdlmsStatus XdlmsClient::Get(
     ToApduLogicalName(descriptor.instanceId),
     descriptor.attributeId);
 
-  std::vector<std::uint8_t> encodedRequest;
-  if (dlms::apdu::EncodeXdlmsApdu(request, encodedRequest) !=
-      dlms::apdu::ApduStatus::Ok) {
-    return XdlmsStatus::EncodeFailed;
-  }
-
-  dlms::profile::ProfileByteView view = {};
-  view.data = encodedRequest.empty() ? 0 : &encodedRequest[0];
-  view.size = encodedRequest.size();
-  if (channel_.SendApdu(view) != dlms::profile::ProfileStatus::Ok) {
-    return XdlmsStatus::SendFailed;
-  }
-
-  std::vector<std::uint8_t> encodedResponse;
-  if (channel_.ReceiveApdu(encodedResponse) != dlms::profile::ProfileStatus::Ok) {
-    return XdlmsStatus::ReceiveFailed;
-  }
-
   dlms::apdu::XdlmsApdu response;
-  if (dlms::apdu::DecodeXdlmsApdu(
-        encodedResponse.empty() ? 0 : &encodedResponse[0],
-        encodedResponse.size(),
-        response) != dlms::apdu::ApduStatus::Ok) {
-    return XdlmsStatus::DecodeFailed;
+  status = SendAndReceive(channel_, request, response);
+  if (status != XdlmsStatus::Ok) {
+    return status;
   }
 
   if (response.kind != dlms::apdu::XdlmsApduKind::GetResponse) {
@@ -138,6 +209,143 @@ XdlmsStatus XdlmsClient::Get(
   }
 
   return CopyEncodedData(response.getResponse.data, result);
+}
+
+XdlmsStatus XdlmsClient::Set(
+  const CosemAttributeDescriptor& descriptor,
+  const std::vector<std::uint8_t>& encodedData,
+  SetResult& result)
+{
+  result = EmptySetResult();
+
+  XdlmsStatus status = ValidateDescriptor(descriptor);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  dlms::apdu::DlmsData data;
+  status = DecodeEncodedData(encodedData, data);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  if (!association_.IsAssociated()) {
+    return XdlmsStatus::NotAssociated;
+  }
+
+  const std::uint8_t invokeId = invokeIds_.Next();
+  const std::uint8_t invokeIdAndPriority =
+    MakeInvokeIdAndPriority(invokeId, DefaultServiceOptions());
+
+  dlms::apdu::XdlmsApdu request;
+  request.kind = dlms::apdu::XdlmsApduKind::SetRequest;
+  request.setRequestAny.choice = dlms::apdu::SetRequestChoice::Normal;
+  request.setRequestAny.invokeIdAndPriority = invokeIdAndPriority;
+  request.setRequestAny.normal.descriptor = ToApduDescriptor(descriptor);
+  request.setRequestAny.normal.hasSelection = false;
+  request.setRequestAny.data = data;
+
+  dlms::apdu::XdlmsApdu response;
+  status = SendAndReceive(channel_, request, response);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  if (response.kind != dlms::apdu::XdlmsApduKind::SetResponse) {
+    return XdlmsStatus::DecodeFailed;
+  }
+
+  if (response.setResponseAny.choice != dlms::apdu::SetResponseChoice::Normal) {
+    return response.setResponseAny.choice == dlms::apdu::SetResponseChoice::DataBlock ||
+        response.setResponseAny.choice == dlms::apdu::SetResponseChoice::LastDataBlock
+      ? XdlmsStatus::BlockTransferRequired
+      : XdlmsStatus::UnsupportedFeature;
+  }
+
+  if ((response.setResponseAny.invokeIdAndPriority & 0x0Fu) != invokeId) {
+    return XdlmsStatus::InvokeIdMismatch;
+  }
+
+  result.invokeId = invokeId;
+  result.accessResult = response.setResponseAny.result;
+  return result.accessResult == 0u
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::ServiceRejected;
+}
+
+XdlmsStatus XdlmsClient::Action(
+  const CosemMethodDescriptor& descriptor,
+  bool hasParameter,
+  const std::vector<std::uint8_t>& encodedParameter,
+  ActionResult& result)
+{
+  result = EmptyActionResult();
+
+  XdlmsStatus status = ValidateMethodDescriptor(descriptor);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  dlms::apdu::DlmsData parameter;
+  if (hasParameter) {
+    status = DecodeEncodedData(encodedParameter, parameter);
+    if (status != XdlmsStatus::Ok) {
+      return status;
+    }
+  }
+
+  if (!association_.IsAssociated()) {
+    return XdlmsStatus::NotAssociated;
+  }
+
+  const std::uint8_t invokeId = invokeIds_.Next();
+  const std::uint8_t invokeIdAndPriority =
+    MakeInvokeIdAndPriority(invokeId, DefaultServiceOptions());
+
+  dlms::apdu::XdlmsApdu request;
+  request.kind = dlms::apdu::XdlmsApduKind::ActionRequest;
+  request.actionRequestAny.choice = dlms::apdu::ActionRequestChoice::Normal;
+  request.actionRequestAny.invokeIdAndPriority = invokeIdAndPriority;
+  request.actionRequestAny.normal.descriptor = ToApduDescriptor(descriptor);
+  request.actionRequestAny.normal.hasInvocationParameter = hasParameter;
+  request.actionRequestAny.normal.invocationParameter = parameter;
+
+  dlms::apdu::XdlmsApdu response;
+  status = SendAndReceive(channel_, request, response);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  if (response.kind != dlms::apdu::XdlmsApduKind::ActionResponse) {
+    return XdlmsStatus::DecodeFailed;
+  }
+
+  if (response.actionResponseAny.choice !=
+      dlms::apdu::ActionResponseChoice::Normal) {
+    return response.actionResponseAny.choice ==
+        dlms::apdu::ActionResponseChoice::WithPblock
+      ? XdlmsStatus::BlockTransferRequired
+      : XdlmsStatus::UnsupportedFeature;
+  }
+
+  if ((response.actionResponseAny.invokeIdAndPriority & 0x0Fu) != invokeId) {
+    return XdlmsStatus::InvokeIdMismatch;
+  }
+
+  result.invokeId = invokeId;
+  result.actionResult = response.actionResponseAny.normal.result;
+  if (response.actionResponseAny.normal.hasReturnParameter) {
+    status = CopyEncodedData(
+      response.actionResponseAny.normal.returnParameter,
+      result);
+    if (status != XdlmsStatus::Ok) {
+      return status;
+    }
+  }
+
+  return result.actionResult == 0u
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::ServiceRejected;
 }
 
 } // namespace xdlms
