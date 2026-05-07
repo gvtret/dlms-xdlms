@@ -63,6 +63,33 @@ TEST(XdlmsTypes, DescriptorRequiresClassAttributeAndInstance)
             dlms::xdlms::ValidateDescriptor(descriptor));
 }
 
+TEST(XdlmsTypes, MethodDescriptorRequiresClassMethodAndInstance)
+{
+  dlms::xdlms::CosemMethodDescriptor descriptor =
+    dlms::xdlms::EmptyCosemMethodDescriptor();
+  descriptor.classId = 1u;
+  descriptor.instanceId =
+    dlms::xdlms::CosemLogicalName(0, 0, 1, 0, 0, 255);
+  descriptor.methodId = 2u;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            dlms::xdlms::ValidateMethodDescriptor(descriptor));
+
+  descriptor.classId = 0u;
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::InvalidArgument,
+            dlms::xdlms::ValidateMethodDescriptor(descriptor));
+
+  descriptor.classId = 1u;
+  descriptor.methodId = 0u;
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::InvalidArgument,
+            dlms::xdlms::ValidateMethodDescriptor(descriptor));
+
+  descriptor.methodId = 2u;
+  descriptor.instanceId = dlms::xdlms::CosemLogicalName();
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::InvalidArgument,
+            dlms::xdlms::ValidateMethodDescriptor(descriptor));
+}
+
 TEST(XdlmsTypes, EmptyGetResultClearsFields)
 {
   const dlms::xdlms::GetResult result =
@@ -73,6 +100,17 @@ TEST(XdlmsTypes, EmptyGetResultClearsFields)
   EXPECT_TRUE(result.data.empty());
   EXPECT_FALSE(result.hasAccessResult);
   EXPECT_EQ(0u, result.accessResult);
+}
+
+TEST(XdlmsTypes, EmptyActionResultClearsFields)
+{
+  const dlms::xdlms::ActionResult result =
+    dlms::xdlms::EmptyActionResult();
+
+  EXPECT_EQ(0u, result.invokeId);
+  EXPECT_EQ(0u, result.actionResult);
+  EXPECT_FALSE(result.hasData);
+  EXPECT_TRUE(result.data.empty());
 }
 
 TEST(XdlmsTypes, InvokeIdAllocatorUsesStableFourBitRange)

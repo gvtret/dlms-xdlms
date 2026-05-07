@@ -24,6 +24,15 @@ struct SetIndication
   std::vector<std::uint8_t> data;
 };
 
+struct ActionIndication
+{
+  std::uint8_t invokeId;
+  ServiceOptions options;
+  CosemMethodDescriptor descriptor;
+  bool hasParameter;
+  std::vector<std::uint8_t> parameter;
+};
+
 class IXdlmsServerHandler
 {
 public:
@@ -36,6 +45,10 @@ public:
   virtual XdlmsStatus HandleSet(
     const SetIndication& indication,
     SetResult& result);
+
+  virtual XdlmsStatus HandleAction(
+    const ActionIndication& indication,
+    ActionResult& result);
 };
 
 class XdlmsServerDispatcher
@@ -50,6 +63,10 @@ public:
   XdlmsStatus DispatchSet(
     const SetIndication& indication,
     SetResult& result);
+
+  XdlmsStatus DispatchAction(
+    const ActionIndication& indication,
+    ActionResult& result);
 
 private:
   IXdlmsServerHandler& handler_;
@@ -70,6 +87,7 @@ private:
 
 GetIndication EmptyGetIndication();
 SetIndication EmptySetIndication();
+ActionIndication EmptyActionIndication();
 XdlmsStatus ValidateInvokeId(std::uint8_t invokeId);
 
 } // namespace xdlms

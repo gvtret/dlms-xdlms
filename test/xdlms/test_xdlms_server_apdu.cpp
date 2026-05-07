@@ -1,4 +1,5 @@
 #include "dlms/apdu/data.hpp"
+#include "dlms/apdu/action.hpp"
 #include "dlms/apdu/get.hpp"
 #include "dlms/apdu/set.hpp"
 #include "dlms/apdu/xdlms.hpp"
@@ -17,12 +18,16 @@ public:
   FakeServerHandler()
     : status(dlms::xdlms::XdlmsStatus::Ok)
     , setStatus(dlms::xdlms::XdlmsStatus::Ok)
+    , actionStatus(dlms::xdlms::XdlmsStatus::Ok)
     , calls(0)
     , setCalls(0)
+    , actionCalls(0)
     , lastIndication(dlms::xdlms::EmptyGetIndication())
     , lastSetIndication(dlms::xdlms::EmptySetIndication())
+    , lastActionIndication(dlms::xdlms::EmptyActionIndication())
     , result(dlms::xdlms::EmptyGetResult())
     , setResult(dlms::xdlms::EmptySetResult())
+    , actionResult(dlms::xdlms::EmptyActionResult())
   {
   }
 
@@ -46,14 +51,28 @@ public:
     return setStatus;
   }
 
+  dlms::xdlms::XdlmsStatus HandleAction(
+    const dlms::xdlms::ActionIndication& indication,
+    dlms::xdlms::ActionResult& output)
+  {
+    ++actionCalls;
+    lastActionIndication = indication;
+    output = actionResult;
+    return actionStatus;
+  }
+
   dlms::xdlms::XdlmsStatus status;
   dlms::xdlms::XdlmsStatus setStatus;
+  dlms::xdlms::XdlmsStatus actionStatus;
   int calls;
   int setCalls;
+  int actionCalls;
   dlms::xdlms::GetIndication lastIndication;
   dlms::xdlms::SetIndication lastSetIndication;
+  dlms::xdlms::ActionIndication lastActionIndication;
   dlms::xdlms::GetResult result;
   dlms::xdlms::SetResult setResult;
+  dlms::xdlms::ActionResult actionResult;
 };
 
 std::vector<std::uint8_t> EncodeApdu(const dlms::apdu::XdlmsApdu& apdu)
@@ -95,6 +114,19 @@ void FillSetDescriptor(dlms::apdu::CosemAttributeDescriptorWithSelection& normal
   normal.hasSelection = false;
 }
 
+void FillActionDescriptor(
+  dlms::apdu::CosemMethodDescriptorWithParameter& normal)
+{
+  normal.descriptor.classId = 3u;
+  normal.descriptor.logicalName[0] = 1u;
+  normal.descriptor.logicalName[1] = 0u;
+  normal.descriptor.logicalName[2] = 1u;
+  normal.descriptor.logicalName[3] = 8u;
+  normal.descriptor.logicalName[4] = 0u;
+  normal.descriptor.logicalName[5] = 255u;
+  normal.descriptor.methodId = 1u;
+}
+
 std::vector<std::uint8_t> MakeSetRequest(
   std::uint8_t invokeIdAndPriority,
   std::uint16_t value)
@@ -122,6 +154,42 @@ std::vector<std::uint8_t> MakeUnsupportedSetRequest(
   apdu.setRequestAny.dataBlock.blockNumber = 1u;
   apdu.setRequestAny.dataBlock.rawData.data = &raw;
   apdu.setRequestAny.dataBlock.rawData.size = 1u;
+  return EncodeApdu(apdu);
+}
+
+std::vector<std::uint8_t> MakeActionRequest(
+  std::uint8_t invokeIdAndPriority,
+  bool hasParameter,
+  std::uint16_t value)
+{
+  dlms::apdu::XdlmsApdu apdu;
+  apdu.kind = dlms::apdu::XdlmsApduKind::ActionRequest;
+  apdu.actionRequestAny.choice = dlms::apdu::ActionRequestChoice::Normal;
+  apdu.actionRequestAny.invokeIdAndPriority = invokeIdAndPriority;
+  FillActionDescriptor(apdu.actionRequestAny.normal);
+  apdu.actionRequestAny.normal.hasInvocationParameter = hasParameter;
+  apdu.actionRequestAny.normal.invocationParameter =
+    MakeLongUnsignedData(value);
+  return EncodeApdu(apdu);
+}
+
+std::vector<std::uint8_t> MakeUnsupportedActionRequest(
+  dlms::apdu::ActionRequestChoice choice)
+{
+  const std::uint8_t raw = 0x00u;
+  dlms::apdu::XdlmsApdu apdu;
+  apdu.kind = dlms::apdu::XdlmsApduKind::ActionRequest;
+  apdu.actionRequestAny.choice = choice;
+  apdu.actionRequestAny.invokeIdAndPriority = 0x81u;
+  FillActionDescriptor(apdu.actionRequestAny.normal);
+  apdu.actionRequestAny.normal.hasInvocationParameter = true;
+  apdu.actionRequestAny.normal.invocationParameter =
+    MakeLongUnsignedData(1u);
+  apdu.actionRequestAny.blockNumber = 1u;
+  apdu.actionRequestAny.dataBlock.lastBlock = true;
+  apdu.actionRequestAny.dataBlock.blockNumber = 1u;
+  apdu.actionRequestAny.dataBlock.rawData.data = &raw;
+  apdu.actionRequestAny.dataBlock.rawData.size = 1u;
   return EncodeApdu(apdu);
 }
 
@@ -387,4 +455,155 @@ TEST(XdlmsServerApduProcessor, RejectsUnconfirmedSetAndHandlerFailures)
             processor.ProcessRequest(MakeSetRequest(0x88u, 1u), response));
   EXPECT_TRUE(response.empty());
   EXPECT_EQ(1, handler.setCalls);
+}
+
+TEST(XdlmsServerApduProcessor, ProcessActionRequestNormalEncodesSuccessResponse)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
+  std::vector<std::uint8_t> response;
+  handler.actionResult.actionResult = 0u;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            processor.ProcessRequest(
+              MakeActionRequest(0xC9u, true, 0x1234u),
+              response));
+
+  ASSERT_EQ(1, handler.actionCalls);
+  EXPECT_EQ(9u, handler.lastActionIndication.invokeId);
+  EXPECT_TRUE(handler.lastActionIndication.options.confirmed);
+  EXPECT_TRUE(handler.lastActionIndication.options.highPriority);
+  EXPECT_EQ(3u, handler.lastActionIndication.descriptor.classId);
+  EXPECT_EQ(1u, handler.lastActionIndication.descriptor.methodId);
+  EXPECT_TRUE(handler.lastActionIndication.hasParameter);
+  EXPECT_EQ(MakeEncodedLongUnsigned(0x1234u),
+            handler.lastActionIndication.parameter);
+
+  const dlms::apdu::XdlmsApdu decoded = DecodeResponse(response);
+  EXPECT_EQ(dlms::apdu::XdlmsApduKind::ActionResponse, decoded.kind);
+  EXPECT_EQ(dlms::apdu::ActionResponseChoice::Normal,
+            decoded.actionResponseAny.choice);
+  EXPECT_EQ(0xC9u, decoded.actionResponseAny.invokeIdAndPriority);
+  EXPECT_EQ(0u, decoded.actionResponseAny.normal.result);
+  EXPECT_FALSE(decoded.actionResponseAny.normal.hasReturnParameter);
+}
+
+TEST(XdlmsServerApduProcessor, ProcessActionRequestNormalAllowsNoParameter)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
+  std::vector<std::uint8_t> response;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            processor.ProcessRequest(
+              MakeActionRequest(0x89u, false, 0u),
+              response));
+
+  ASSERT_EQ(1, handler.actionCalls);
+  EXPECT_FALSE(handler.lastActionIndication.hasParameter);
+  EXPECT_TRUE(handler.lastActionIndication.parameter.empty());
+}
+
+TEST(XdlmsServerApduProcessor, ProcessActionRequestNormalEncodesReturnData)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
+  std::vector<std::uint8_t> response;
+  handler.actionResult.actionResult = 0u;
+  handler.actionResult.hasData = true;
+  handler.actionResult.data = MakeEncodedLongUnsigned(0x4321u);
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            processor.ProcessRequest(
+              MakeActionRequest(0x89u, true, 0x0001u),
+              response));
+
+  const dlms::apdu::XdlmsApdu decoded = DecodeResponse(response);
+  EXPECT_EQ(0x89u, decoded.actionResponseAny.invokeIdAndPriority);
+  EXPECT_EQ(0u, decoded.actionResponseAny.normal.result);
+  EXPECT_TRUE(decoded.actionResponseAny.normal.hasReturnParameter);
+  EXPECT_EQ(dlms::apdu::DlmsDataType::LongUnsigned,
+            decoded.actionResponseAny.normal.returnParameter.type);
+  EXPECT_EQ(0x4321u,
+            decoded.actionResponseAny.normal.returnParameter.unsignedValue);
+}
+
+TEST(XdlmsServerApduProcessor, ProcessActionRequestNormalEncodesActionResult)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
+  std::vector<std::uint8_t> response;
+  handler.actionResult.actionResult = 1u;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            processor.ProcessRequest(
+              MakeActionRequest(0x89u, true, 0x0001u),
+              response));
+
+  const dlms::apdu::XdlmsApdu decoded = DecodeResponse(response);
+  EXPECT_EQ(1u, decoded.actionResponseAny.normal.result);
+  EXPECT_FALSE(decoded.actionResponseAny.normal.hasReturnParameter);
+}
+
+TEST(XdlmsServerApduProcessor, RejectsUnsupportedActionShapes)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
+  std::vector<std::uint8_t> response;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::UnsupportedFeature,
+            processor.ProcessRequest(
+              MakeUnsupportedActionRequest(
+                dlms::apdu::ActionRequestChoice::NextPblock),
+              response));
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::UnsupportedFeature,
+            processor.ProcessRequest(
+              MakeUnsupportedActionRequest(
+                dlms::apdu::ActionRequestChoice::WithList),
+              response));
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::UnsupportedFeature,
+            processor.ProcessRequest(
+              MakeUnsupportedActionRequest(
+                dlms::apdu::ActionRequestChoice::WithFirstPblock),
+              response));
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::UnsupportedFeature,
+            processor.ProcessRequest(
+              MakeUnsupportedActionRequest(
+                dlms::apdu::ActionRequestChoice::WithListAndFirstPblock),
+              response));
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::UnsupportedFeature,
+            processor.ProcessRequest(
+              MakeUnsupportedActionRequest(
+                dlms::apdu::ActionRequestChoice::WithPblock),
+              response));
+  EXPECT_EQ(0, handler.actionCalls);
+}
+
+TEST(XdlmsServerApduProcessor, RejectsUnconfirmedActionAndHandlerFailures)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
+  std::vector<std::uint8_t> response;
+  response.push_back(0xFFu);
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::UnsupportedFeature,
+            processor.ProcessRequest(
+              MakeActionRequest(0x09u, true, 1u),
+              response));
+  EXPECT_TRUE(response.empty());
+  EXPECT_EQ(0, handler.actionCalls);
+
+  handler.actionStatus = dlms::xdlms::XdlmsStatus::InvalidState;
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::InvalidState,
+            processor.ProcessRequest(
+              MakeActionRequest(0x89u, true, 1u),
+              response));
+  EXPECT_TRUE(response.empty());
+  EXPECT_EQ(1, handler.actionCalls);
 }

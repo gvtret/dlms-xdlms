@@ -36,6 +36,13 @@ struct CosemAttributeDescriptor
   std::uint8_t attributeId;
 };
 
+struct CosemMethodDescriptor
+{
+  std::uint16_t classId;
+  CosemLogicalName instanceId;
+  std::uint8_t methodId;
+};
+
 struct ServiceOptions
 {
   bool confirmed;
@@ -57,6 +64,14 @@ struct SetResult
   std::uint8_t accessResult;
 };
 
+struct ActionResult
+{
+  std::uint8_t invokeId;
+  std::uint8_t actionResult;
+  bool hasData;
+  std::vector<std::uint8_t> data;
+};
+
 class InvokeIdAllocator
 {
 public:
@@ -70,10 +85,14 @@ private:
 
 ServiceOptions DefaultServiceOptions();
 CosemAttributeDescriptor EmptyCosemAttributeDescriptor();
+CosemMethodDescriptor EmptyCosemMethodDescriptor();
 GetResult EmptyGetResult();
 SetResult EmptySetResult();
+ActionResult EmptyActionResult();
 XdlmsStatus ValidateDescriptor(
   const CosemAttributeDescriptor& descriptor);
+XdlmsStatus ValidateMethodDescriptor(
+  const CosemMethodDescriptor& descriptor);
 
 } // namespace xdlms
 } // namespace dlms

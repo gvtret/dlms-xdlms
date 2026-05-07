@@ -73,6 +73,15 @@ CosemAttributeDescriptor EmptyCosemAttributeDescriptor()
   return descriptor;
 }
 
+CosemMethodDescriptor EmptyCosemMethodDescriptor()
+{
+  CosemMethodDescriptor descriptor;
+  descriptor.classId = 0;
+  descriptor.instanceId = CosemLogicalName();
+  descriptor.methodId = 0;
+  return descriptor;
+}
+
 GetResult EmptyGetResult()
 {
   GetResult result;
@@ -92,10 +101,40 @@ SetResult EmptySetResult()
   return result;
 }
 
+ActionResult EmptyActionResult()
+{
+  ActionResult result;
+  result.invokeId = 0;
+  result.actionResult = 0;
+  result.hasData = false;
+  result.data.clear();
+  return result;
+}
+
 XdlmsStatus ValidateDescriptor(
   const CosemAttributeDescriptor& descriptor)
 {
   if (descriptor.classId == 0 || descriptor.attributeId == 0) {
+    return XdlmsStatus::InvalidArgument;
+  }
+
+  bool hasAnyInstanceByte = false;
+  for (std::size_t i = 0; i < descriptor.instanceId.Size(); ++i) {
+    if (descriptor.instanceId[i] != 0u) {
+      hasAnyInstanceByte = true;
+      break;
+    }
+  }
+
+  return hasAnyInstanceByte
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::InvalidArgument;
+}
+
+XdlmsStatus ValidateMethodDescriptor(
+  const CosemMethodDescriptor& descriptor)
+{
+  if (descriptor.classId == 0 || descriptor.methodId == 0) {
     return XdlmsStatus::InvalidArgument;
   }
 

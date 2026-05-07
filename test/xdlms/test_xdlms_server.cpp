@@ -39,9 +39,13 @@ class FakeSetServerHandler : public FakeServerHandler
 public:
   FakeSetServerHandler()
     : setStatus(dlms::xdlms::XdlmsStatus::Ok)
+    , actionStatus(dlms::xdlms::XdlmsStatus::Ok)
     , setCalls(0)
+    , actionCalls(0)
     , lastSetIndication(dlms::xdlms::EmptySetIndication())
+    , lastActionIndication(dlms::xdlms::EmptyActionIndication())
     , setResult(dlms::xdlms::EmptySetResult())
+    , actionResult(dlms::xdlms::EmptyActionResult())
   {
   }
 
@@ -55,10 +59,24 @@ public:
     return setStatus;
   }
 
+  dlms::xdlms::XdlmsStatus HandleAction(
+    const dlms::xdlms::ActionIndication& indication,
+    dlms::xdlms::ActionResult& output)
+  {
+    ++actionCalls;
+    lastActionIndication = indication;
+    output = actionResult;
+    return actionStatus;
+  }
+
   dlms::xdlms::XdlmsStatus setStatus;
+  dlms::xdlms::XdlmsStatus actionStatus;
   int setCalls;
+  int actionCalls;
   dlms::xdlms::SetIndication lastSetIndication;
+  dlms::xdlms::ActionIndication lastActionIndication;
   dlms::xdlms::SetResult setResult;
+  dlms::xdlms::ActionResult actionResult;
 };
 
 dlms::xdlms::CosemAttributeDescriptor MakeDescriptor()
@@ -89,6 +107,29 @@ dlms::xdlms::SetIndication MakeSetIndication()
   indication.data.push_back(0x12u);
   indication.data.push_back(0x00u);
   indication.data.push_back(0x01u);
+  return indication;
+}
+
+dlms::xdlms::CosemMethodDescriptor MakeMethodDescriptor()
+{
+  dlms::xdlms::CosemMethodDescriptor descriptor =
+    dlms::xdlms::EmptyCosemMethodDescriptor();
+  descriptor.classId = 3u;
+  descriptor.instanceId = dlms::xdlms::CosemLogicalName(1, 0, 1, 8, 0, 255);
+  descriptor.methodId = 1u;
+  return descriptor;
+}
+
+dlms::xdlms::ActionIndication MakeActionIndication()
+{
+  dlms::xdlms::ActionIndication indication =
+    dlms::xdlms::EmptyActionIndication();
+  indication.invokeId = 10u;
+  indication.descriptor = MakeMethodDescriptor();
+  indication.hasParameter = true;
+  indication.parameter.push_back(0x12u);
+  indication.parameter.push_back(0x00u);
+  indication.parameter.push_back(0x01u);
   return indication;
 }
 
@@ -353,4 +394,121 @@ TEST(XdlmsServer, DispatchSetPropagatesHandlerFailureWithoutResultMutation)
   EXPECT_EQ(1, handler.setCalls);
   EXPECT_EQ(0u, result.invokeId);
   EXPECT_EQ(0u, result.accessResult);
+}
+
+TEST(XdlmsServer, EmptyActionIndicationUsesDefaultServiceOptions)
+{
+  const dlms::xdlms::ActionIndication indication =
+    dlms::xdlms::EmptyActionIndication();
+
+  EXPECT_EQ(0u, indication.invokeId);
+  EXPECT_TRUE(indication.options.confirmed);
+  EXPECT_FALSE(indication.options.highPriority);
+  EXPECT_FALSE(indication.hasParameter);
+  EXPECT_TRUE(indication.parameter.empty());
+}
+
+TEST(XdlmsServer, DispatchActionRejectsInvalidInvokeIdBeforeHandler)
+{
+  FakeSetServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::ActionIndication indication = MakeActionIndication();
+  dlms::xdlms::ActionResult result = dlms::xdlms::EmptyActionResult();
+  indication.invokeId = 0u;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::InvalidArgument,
+            dispatcher.DispatchAction(indication, result));
+  EXPECT_EQ(0, handler.actionCalls);
+  EXPECT_EQ(0u, result.invokeId);
+}
+
+TEST(XdlmsServer, DispatchActionRejectsInvalidDescriptorBeforeHandler)
+{
+  FakeSetServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::ActionIndication indication = MakeActionIndication();
+  dlms::xdlms::ActionResult result = dlms::xdlms::EmptyActionResult();
+  indication.descriptor = dlms::xdlms::EmptyCosemMethodDescriptor();
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::InvalidArgument,
+            dispatcher.DispatchAction(indication, result));
+  EXPECT_EQ(0, handler.actionCalls);
+}
+
+TEST(XdlmsServer, DispatchActionRejectsEmptyPresentParameterBeforeHandler)
+{
+  FakeSetServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::ActionIndication indication = MakeActionIndication();
+  dlms::xdlms::ActionResult result = dlms::xdlms::EmptyActionResult();
+  indication.parameter.clear();
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::InvalidArgument,
+            dispatcher.DispatchAction(indication, result));
+  EXPECT_EQ(0, handler.actionCalls);
+}
+
+TEST(XdlmsServer, DispatchActionForwardsDescriptorOptionsAndParameter)
+{
+  FakeSetServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::ActionIndication indication = MakeActionIndication();
+  dlms::xdlms::ActionResult result = dlms::xdlms::EmptyActionResult();
+  indication.options.highPriority = true;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            dispatcher.DispatchAction(indication, result));
+
+  ASSERT_EQ(1, handler.actionCalls);
+  EXPECT_EQ(indication.invokeId, handler.lastActionIndication.invokeId);
+  EXPECT_TRUE(handler.lastActionIndication.options.highPriority);
+  EXPECT_EQ(indication.descriptor.classId,
+            handler.lastActionIndication.descriptor.classId);
+  EXPECT_EQ(indication.descriptor.methodId,
+            handler.lastActionIndication.descriptor.methodId);
+  ASSERT_EQ(3u, handler.lastActionIndication.parameter.size());
+  EXPECT_EQ(0x12u, handler.lastActionIndication.parameter[0]);
+}
+
+TEST(XdlmsServer, DispatchActionResponsePreservesRequestInvokeId)
+{
+  FakeSetServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::ActionResult result = dlms::xdlms::EmptyActionResult();
+  handler.actionResult.invokeId = 1u;
+  handler.actionResult.actionResult = 0u;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            dispatcher.DispatchAction(MakeActionIndication(), result));
+
+  EXPECT_EQ(10u, result.invokeId);
+  EXPECT_EQ(0u, result.actionResult);
+}
+
+TEST(XdlmsServer, DispatchActionUsesDefaultUnsupportedHandler)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::ActionResult result = dlms::xdlms::EmptyActionResult();
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::UnsupportedFeature,
+            dispatcher.DispatchAction(MakeActionIndication(), result));
+
+  EXPECT_EQ(0u, result.invokeId);
+  EXPECT_EQ(0u, result.actionResult);
+}
+
+TEST(XdlmsServer, DispatchActionPropagatesHandlerFailureWithoutResultMutation)
+{
+  FakeSetServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::ActionResult result = dlms::xdlms::EmptyActionResult();
+  handler.actionStatus = dlms::xdlms::XdlmsStatus::ServiceRejected;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::ServiceRejected,
+            dispatcher.DispatchAction(MakeActionIndication(), result));
+
+  EXPECT_EQ(1, handler.actionCalls);
+  EXPECT_EQ(0u, result.invokeId);
+  EXPECT_EQ(0u, result.actionResult);
 }

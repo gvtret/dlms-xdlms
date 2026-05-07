@@ -1,5 +1,6 @@
 #include "dlms/xdlms/xdlms_server.hpp"
 
+#include "dlms/apdu/action.hpp"
 #include "dlms/apdu/data.hpp"
 #include "dlms/apdu/get.hpp"
 #include "dlms/apdu/set.hpp"
@@ -44,6 +45,22 @@ CosemAttributeDescriptor ToXdlmsDescriptor(
     descriptor.logicalName[4],
     descriptor.logicalName[5]);
   xdlmsDescriptor.attributeId = descriptor.attributeId;
+  return xdlmsDescriptor;
+}
+
+CosemMethodDescriptor ToXdlmsDescriptor(
+  const dlms::apdu::CosemMethodDescriptor& descriptor)
+{
+  CosemMethodDescriptor xdlmsDescriptor;
+  xdlmsDescriptor.classId = descriptor.classId;
+  xdlmsDescriptor.instanceId = CosemLogicalName(
+    descriptor.logicalName[0],
+    descriptor.logicalName[1],
+    descriptor.logicalName[2],
+    descriptor.logicalName[3],
+    descriptor.logicalName[4],
+    descriptor.logicalName[5]);
+  xdlmsDescriptor.methodId = descriptor.methodId;
   return xdlmsDescriptor;
 }
 
@@ -136,6 +153,40 @@ XdlmsStatus EncodeSetResponse(
     : XdlmsStatus::EncodeFailed;
 }
 
+XdlmsStatus EncodeActionResponse(
+  std::uint8_t invokeIdAndPriority,
+  const ActionResult& result,
+  std::vector<std::uint8_t>& responseApdu)
+{
+  dlms::apdu::XdlmsApdu response;
+  response.kind = dlms::apdu::XdlmsApduKind::ActionResponse;
+  response.actionResponseAny.choice =
+    dlms::apdu::ActionResponseChoice::Normal;
+  response.actionResponseAny.invokeIdAndPriority = invokeIdAndPriority;
+  response.actionResponseAny.normal.result = result.actionResult;
+  response.actionResponseAny.normal.hasReturnParameter = result.hasData;
+
+  if (result.hasData) {
+    const XdlmsStatus status =
+      DecodeEncodedData(result.data,
+                        response.actionResponseAny.normal.returnParameter);
+    if (status != XdlmsStatus::Ok) {
+      return status;
+    }
+  }
+
+  response.actionResponse.invokeIdAndPriority = invokeIdAndPriority;
+  response.actionResponse.result = result.actionResult;
+  response.actionResponse.hasReturnParameter = result.hasData;
+  response.actionResponse.returnParameter =
+    response.actionResponseAny.normal.returnParameter;
+
+  return dlms::apdu::EncodeXdlmsApdu(response, responseApdu) ==
+      dlms::apdu::ApduStatus::Ok
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::EncodeFailed;
+}
+
 XdlmsStatus ProcessGetRequest(
   const dlms::apdu::XdlmsApdu& request,
   XdlmsServerDispatcher& dispatcher,
@@ -211,6 +262,51 @@ XdlmsStatus ProcessSetRequest(
   return EncodeSetResponse(responseInvokeIdAndPriority, result, responseApdu);
 }
 
+XdlmsStatus ProcessActionRequest(
+  const dlms::apdu::XdlmsApdu& request,
+  XdlmsServerDispatcher& dispatcher,
+  std::vector<std::uint8_t>& responseApdu)
+{
+  if (request.actionRequestAny.choice !=
+      dlms::apdu::ActionRequestChoice::Normal) {
+    return XdlmsStatus::UnsupportedFeature;
+  }
+
+  ActionIndication indication = EmptyActionIndication();
+  indication.invokeId = static_cast<std::uint8_t>(
+    request.actionRequest.invokeIdAndPriority & 0x0Fu);
+  indication.options =
+    ParseServiceOptions(request.actionRequest.invokeIdAndPriority);
+  indication.descriptor = ToXdlmsDescriptor(request.actionRequest.descriptor);
+  indication.hasParameter = request.actionRequest.hasInvocationParameter;
+
+  if (!indication.options.confirmed) {
+    return XdlmsStatus::UnsupportedFeature;
+  }
+
+  if (indication.hasParameter) {
+    const XdlmsStatus status =
+      EncodeDataBytes(request.actionRequest.invocationParameter,
+                      indication.parameter);
+    if (status != XdlmsStatus::Ok) {
+      return status;
+    }
+  }
+
+  ActionResult result = EmptyActionResult();
+  const XdlmsStatus status = dispatcher.DispatchAction(indication, result);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  const std::uint8_t responseInvokeIdAndPriority =
+    MakeInvokeIdAndPriority(indication.invokeId, indication.options);
+  return EncodeActionResponse(
+    responseInvokeIdAndPriority,
+    result,
+    responseApdu);
+}
+
 } // namespace
 
 IXdlmsServerHandler::~IXdlmsServerHandler()
@@ -220,6 +316,15 @@ IXdlmsServerHandler::~IXdlmsServerHandler()
 XdlmsStatus IXdlmsServerHandler::HandleSet(
   const SetIndication& indication,
   SetResult& result)
+{
+  (void)indication;
+  (void)result;
+  return XdlmsStatus::UnsupportedFeature;
+}
+
+XdlmsStatus IXdlmsServerHandler::HandleAction(
+  const ActionIndication& indication,
+  ActionResult& result)
 {
   (void)indication;
   (void)result;
@@ -285,6 +390,35 @@ XdlmsStatus XdlmsServerDispatcher::DispatchSet(
   return XdlmsStatus::Ok;
 }
 
+XdlmsStatus XdlmsServerDispatcher::DispatchAction(
+  const ActionIndication& indication,
+  ActionResult& result)
+{
+  XdlmsStatus status = ValidateInvokeId(indication.invokeId);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  status = ValidateMethodDescriptor(indication.descriptor);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  if (indication.hasParameter && indication.parameter.empty()) {
+    return XdlmsStatus::InvalidArgument;
+  }
+
+  ActionResult handlerResult = EmptyActionResult();
+  status = handler_.HandleAction(indication, handlerResult);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  handlerResult.invokeId = indication.invokeId;
+  result = handlerResult;
+  return XdlmsStatus::Ok;
+}
+
 XdlmsServerApduProcessor::XdlmsServerApduProcessor(
   XdlmsServerDispatcher& dispatcher)
   : dispatcher_(dispatcher)
@@ -312,6 +446,9 @@ XdlmsStatus XdlmsServerApduProcessor::ProcessRequest(
     case dlms::apdu::XdlmsApduKind::SetRequest:
       return ProcessSetRequest(request, dispatcher_, responseApdu);
 
+    case dlms::apdu::XdlmsApduKind::ActionRequest:
+      return ProcessActionRequest(request, dispatcher_, responseApdu);
+
     default:
       return XdlmsStatus::UnsupportedFeature;
   }
@@ -333,6 +470,17 @@ SetIndication EmptySetIndication()
   indication.options = DefaultServiceOptions();
   indication.descriptor = EmptyCosemAttributeDescriptor();
   indication.data.clear();
+  return indication;
+}
+
+ActionIndication EmptyActionIndication()
+{
+  ActionIndication indication;
+  indication.invokeId = 0u;
+  indication.options = DefaultServiceOptions();
+  indication.descriptor = EmptyCosemMethodDescriptor();
+  indication.hasParameter = false;
+  indication.parameter.clear();
   return indication;
 }
 
