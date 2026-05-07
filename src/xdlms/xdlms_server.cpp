@@ -2,6 +2,7 @@
 
 #include "dlms/apdu/data.hpp"
 #include "dlms/apdu/get.hpp"
+#include "dlms/apdu/set.hpp"
 #include "dlms/apdu/xdlms.hpp"
 
 namespace dlms {
@@ -63,7 +64,22 @@ XdlmsStatus DecodeEncodedData(
     : XdlmsStatus::EncodeFailed;
 }
 
-XdlmsStatus EncodeResponse(
+XdlmsStatus EncodeDataBytes(
+  const dlms::apdu::DlmsData& data,
+  std::vector<std::uint8_t>& output)
+{
+  std::vector<std::uint8_t> buffer(65535u);
+  dlms::apdu::ApduWriter writer(&buffer[0], buffer.size());
+  if (dlms::apdu::EncodeDlmsData(data, writer) !=
+      dlms::apdu::ApduStatus::Ok) {
+    return XdlmsStatus::EncodeFailed;
+  }
+
+  output.assign(buffer.begin(), buffer.begin() + writer.WrittenSize());
+  return XdlmsStatus::Ok;
+}
+
+XdlmsStatus EncodeGetResponse(
   std::uint8_t invokeIdAndPriority,
   const GetResult& result,
   std::vector<std::uint8_t>& responseApdu)
@@ -99,6 +115,100 @@ XdlmsStatus EncodeResponse(
       dlms::apdu::ApduStatus::Ok
     ? XdlmsStatus::Ok
     : XdlmsStatus::EncodeFailed;
+}
+
+XdlmsStatus EncodeSetResponse(
+  std::uint8_t invokeIdAndPriority,
+  const SetResult& result,
+  std::vector<std::uint8_t>& responseApdu)
+{
+  dlms::apdu::XdlmsApdu response;
+  response.kind = dlms::apdu::XdlmsApduKind::SetResponse;
+  response.setResponseAny.choice = dlms::apdu::SetResponseChoice::Normal;
+  response.setResponseAny.invokeIdAndPriority = invokeIdAndPriority;
+  response.setResponseAny.result = result.accessResult;
+  response.setResponse.invokeIdAndPriority = invokeIdAndPriority;
+  response.setResponse.result = result.accessResult;
+
+  return dlms::apdu::EncodeXdlmsApdu(response, responseApdu) ==
+      dlms::apdu::ApduStatus::Ok
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::EncodeFailed;
+}
+
+XdlmsStatus ProcessGetRequest(
+  const dlms::apdu::XdlmsApdu& request,
+  XdlmsServerDispatcher& dispatcher,
+  std::vector<std::uint8_t>& responseApdu)
+{
+  if (request.getRequestAny.choice != dlms::apdu::GetRequestChoice::Normal) {
+    return XdlmsStatus::UnsupportedFeature;
+  }
+
+  if (request.getRequest.hasSelectiveAccess) {
+    return XdlmsStatus::UnsupportedFeature;
+  }
+
+  GetIndication indication = EmptyGetIndication();
+  indication.invokeId =
+    static_cast<std::uint8_t>(request.getRequest.invokeIdAndPriority & 0x0Fu);
+  indication.options =
+    ParseServiceOptions(request.getRequest.invokeIdAndPriority);
+  indication.descriptor = ToXdlmsDescriptor(request.getRequest.descriptor);
+
+  if (!indication.options.confirmed) {
+    return XdlmsStatus::UnsupportedFeature;
+  }
+
+  GetResult result = EmptyGetResult();
+  const XdlmsStatus status = dispatcher.DispatchGet(indication, result);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  const std::uint8_t responseInvokeIdAndPriority =
+    MakeInvokeIdAndPriority(indication.invokeId, indication.options);
+  return EncodeGetResponse(responseInvokeIdAndPriority, result, responseApdu);
+}
+
+XdlmsStatus ProcessSetRequest(
+  const dlms::apdu::XdlmsApdu& request,
+  XdlmsServerDispatcher& dispatcher,
+  std::vector<std::uint8_t>& responseApdu)
+{
+  if (request.setRequestAny.choice != dlms::apdu::SetRequestChoice::Normal) {
+    return XdlmsStatus::UnsupportedFeature;
+  }
+
+  if (request.setRequest.hasSelectiveAccess) {
+    return XdlmsStatus::UnsupportedFeature;
+  }
+
+  SetIndication indication = EmptySetIndication();
+  indication.invokeId =
+    static_cast<std::uint8_t>(request.setRequest.invokeIdAndPriority & 0x0Fu);
+  indication.options =
+    ParseServiceOptions(request.setRequest.invokeIdAndPriority);
+  indication.descriptor = ToXdlmsDescriptor(request.setRequest.descriptor);
+
+  if (!indication.options.confirmed) {
+    return XdlmsStatus::UnsupportedFeature;
+  }
+
+  XdlmsStatus status = EncodeDataBytes(request.setRequest.data, indication.data);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  SetResult result = EmptySetResult();
+  status = dispatcher.DispatchSet(indication, result);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  const std::uint8_t responseInvokeIdAndPriority =
+    MakeInvokeIdAndPriority(indication.invokeId, indication.options);
+  return EncodeSetResponse(responseInvokeIdAndPriority, result, responseApdu);
 }
 
 } // namespace
@@ -195,38 +305,16 @@ XdlmsStatus XdlmsServerApduProcessor::ProcessRequest(
     return XdlmsStatus::DecodeFailed;
   }
 
-  if (request.kind != dlms::apdu::XdlmsApduKind::GetRequest) {
-    return XdlmsStatus::UnsupportedFeature;
+  switch (request.kind) {
+    case dlms::apdu::XdlmsApduKind::GetRequest:
+      return ProcessGetRequest(request, dispatcher_, responseApdu);
+
+    case dlms::apdu::XdlmsApduKind::SetRequest:
+      return ProcessSetRequest(request, dispatcher_, responseApdu);
+
+    default:
+      return XdlmsStatus::UnsupportedFeature;
   }
-
-  if (request.getRequestAny.choice != dlms::apdu::GetRequestChoice::Normal) {
-    return XdlmsStatus::UnsupportedFeature;
-  }
-
-  if (request.getRequest.hasSelectiveAccess) {
-    return XdlmsStatus::UnsupportedFeature;
-  }
-
-  GetIndication indication = EmptyGetIndication();
-  indication.invokeId =
-    static_cast<std::uint8_t>(request.getRequest.invokeIdAndPriority & 0x0Fu);
-  indication.options =
-    ParseServiceOptions(request.getRequest.invokeIdAndPriority);
-  indication.descriptor = ToXdlmsDescriptor(request.getRequest.descriptor);
-
-  if (!indication.options.confirmed) {
-    return XdlmsStatus::UnsupportedFeature;
-  }
-
-  GetResult result = EmptyGetResult();
-  const XdlmsStatus status = dispatcher_.DispatchGet(indication, result);
-  if (status != XdlmsStatus::Ok) {
-    return status;
-  }
-
-  const std::uint8_t responseInvokeIdAndPriority =
-    MakeInvokeIdAndPriority(indication.invokeId, indication.options);
-  return EncodeResponse(responseInvokeIdAndPriority, result, responseApdu);
 }
 
 GetIndication EmptyGetIndication()

@@ -1,5 +1,6 @@
 #include "dlms/apdu/data.hpp"
 #include "dlms/apdu/get.hpp"
+#include "dlms/apdu/set.hpp"
 #include "dlms/apdu/xdlms.hpp"
 #include "dlms/xdlms/xdlms_server.hpp"
 
@@ -15,9 +16,13 @@ class FakeServerHandler : public dlms::xdlms::IXdlmsServerHandler
 public:
   FakeServerHandler()
     : status(dlms::xdlms::XdlmsStatus::Ok)
+    , setStatus(dlms::xdlms::XdlmsStatus::Ok)
     , calls(0)
+    , setCalls(0)
     , lastIndication(dlms::xdlms::EmptyGetIndication())
+    , lastSetIndication(dlms::xdlms::EmptySetIndication())
     , result(dlms::xdlms::EmptyGetResult())
+    , setResult(dlms::xdlms::EmptySetResult())
   {
   }
 
@@ -31,10 +36,24 @@ public:
     return status;
   }
 
+  dlms::xdlms::XdlmsStatus HandleSet(
+    const dlms::xdlms::SetIndication& indication,
+    dlms::xdlms::SetResult& output)
+  {
+    ++setCalls;
+    lastSetIndication = indication;
+    output = setResult;
+    return setStatus;
+  }
+
   dlms::xdlms::XdlmsStatus status;
+  dlms::xdlms::XdlmsStatus setStatus;
   int calls;
+  int setCalls;
   dlms::xdlms::GetIndication lastIndication;
+  dlms::xdlms::SetIndication lastSetIndication;
   dlms::xdlms::GetResult result;
+  dlms::xdlms::SetResult setResult;
 };
 
 std::vector<std::uint8_t> EncodeApdu(const dlms::apdu::XdlmsApdu& apdu)
@@ -55,12 +74,61 @@ std::vector<std::uint8_t> MakeGetRequest(
     2u));
 }
 
-std::vector<std::uint8_t> MakeEncodedLongUnsigned(
-  std::uint16_t value)
+dlms::apdu::DlmsData MakeLongUnsignedData(std::uint16_t value)
 {
   dlms::apdu::DlmsData data;
   data.type = dlms::apdu::DlmsDataType::LongUnsigned;
   data.unsignedValue = value;
+  return data;
+}
+
+void FillSetDescriptor(dlms::apdu::CosemAttributeDescriptorWithSelection& normal)
+{
+  normal.descriptor.classId = 3u;
+  normal.descriptor.logicalName[0] = 1u;
+  normal.descriptor.logicalName[1] = 0u;
+  normal.descriptor.logicalName[2] = 1u;
+  normal.descriptor.logicalName[3] = 8u;
+  normal.descriptor.logicalName[4] = 0u;
+  normal.descriptor.logicalName[5] = 255u;
+  normal.descriptor.attributeId = 2u;
+  normal.hasSelection = false;
+}
+
+std::vector<std::uint8_t> MakeSetRequest(
+  std::uint8_t invokeIdAndPriority,
+  std::uint16_t value)
+{
+  dlms::apdu::XdlmsApdu apdu;
+  apdu.kind = dlms::apdu::XdlmsApduKind::SetRequest;
+  apdu.setRequestAny.choice = dlms::apdu::SetRequestChoice::Normal;
+  apdu.setRequestAny.invokeIdAndPriority = invokeIdAndPriority;
+  FillSetDescriptor(apdu.setRequestAny.normal);
+  apdu.setRequestAny.data = MakeLongUnsignedData(value);
+  return EncodeApdu(apdu);
+}
+
+std::vector<std::uint8_t> MakeUnsupportedSetRequest(
+  dlms::apdu::SetRequestChoice choice)
+{
+  const std::uint8_t raw = 0x00u;
+  dlms::apdu::XdlmsApdu apdu;
+  apdu.kind = dlms::apdu::XdlmsApduKind::SetRequest;
+  apdu.setRequestAny.choice = choice;
+  apdu.setRequestAny.invokeIdAndPriority = 0x81u;
+  FillSetDescriptor(apdu.setRequestAny.normal);
+  apdu.setRequestAny.data = MakeLongUnsignedData(1u);
+  apdu.setRequestAny.dataBlock.lastBlock = true;
+  apdu.setRequestAny.dataBlock.blockNumber = 1u;
+  apdu.setRequestAny.dataBlock.rawData.data = &raw;
+  apdu.setRequestAny.dataBlock.rawData.size = 1u;
+  return EncodeApdu(apdu);
+}
+
+std::vector<std::uint8_t> MakeEncodedLongUnsigned(
+  std::uint16_t value)
+{
+  const dlms::apdu::DlmsData data = MakeLongUnsignedData(value);
 
   std::uint8_t buffer[16] = {};
   dlms::apdu::ApduWriter writer(buffer, sizeof(buffer));
@@ -211,4 +279,112 @@ TEST(XdlmsServerApduProcessor, RejectsUnconfirmedAndHandlerFailures)
             processor.ProcessRequest(MakeGetRequest(0x86u), response));
   EXPECT_TRUE(response.empty());
   EXPECT_EQ(1, handler.calls);
+}
+
+TEST(XdlmsServerApduProcessor, ProcessSetRequestNormalEncodesSuccessResponse)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
+  std::vector<std::uint8_t> response;
+  handler.setResult.accessResult = 0u;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            processor.ProcessRequest(MakeSetRequest(0xC8u, 0x1234u), response));
+
+  ASSERT_EQ(1, handler.setCalls);
+  EXPECT_EQ(8u, handler.lastSetIndication.invokeId);
+  EXPECT_TRUE(handler.lastSetIndication.options.confirmed);
+  EXPECT_TRUE(handler.lastSetIndication.options.highPriority);
+  EXPECT_EQ(3u, handler.lastSetIndication.descriptor.classId);
+  EXPECT_EQ(2u, handler.lastSetIndication.descriptor.attributeId);
+  EXPECT_EQ(MakeEncodedLongUnsigned(0x1234u),
+            handler.lastSetIndication.data);
+
+  const dlms::apdu::XdlmsApdu decoded = DecodeResponse(response);
+  EXPECT_EQ(dlms::apdu::XdlmsApduKind::SetResponse, decoded.kind);
+  EXPECT_EQ(dlms::apdu::SetResponseChoice::Normal,
+            decoded.setResponseAny.choice);
+  EXPECT_EQ(0xC8u, decoded.setResponseAny.invokeIdAndPriority);
+  EXPECT_EQ(0u, decoded.setResponseAny.result);
+}
+
+TEST(XdlmsServerApduProcessor, ProcessSetRequestNormalEncodesAccessResult)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
+  std::vector<std::uint8_t> response;
+  handler.setResult.accessResult = 3u;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            processor.ProcessRequest(MakeSetRequest(0x88u, 0x0001u), response));
+
+  const dlms::apdu::XdlmsApdu decoded = DecodeResponse(response);
+  EXPECT_EQ(0x88u, decoded.setResponseAny.invokeIdAndPriority);
+  EXPECT_EQ(3u, decoded.setResponseAny.result);
+}
+
+TEST(XdlmsServerApduProcessor, RejectsUnsupportedSetShapes)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
+  std::vector<std::uint8_t> response;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::UnsupportedFeature,
+            processor.ProcessRequest(
+              MakeUnsupportedSetRequest(
+                dlms::apdu::SetRequestChoice::WithFirstDataBlock),
+              response));
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::UnsupportedFeature,
+            processor.ProcessRequest(
+              MakeUnsupportedSetRequest(
+                dlms::apdu::SetRequestChoice::WithDataBlock),
+              response));
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::UnsupportedFeature,
+            processor.ProcessRequest(
+              MakeUnsupportedSetRequest(
+                dlms::apdu::SetRequestChoice::WithList),
+              response));
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::UnsupportedFeature,
+            processor.ProcessRequest(
+              MakeUnsupportedSetRequest(
+                dlms::apdu::SetRequestChoice::WithListAndFirstDataBlock),
+              response));
+
+  dlms::apdu::XdlmsApdu selective;
+  selective.kind = dlms::apdu::XdlmsApduKind::SetRequest;
+  selective.setRequestAny.choice = dlms::apdu::SetRequestChoice::Normal;
+  selective.setRequestAny.invokeIdAndPriority = 0x81u;
+  FillSetDescriptor(selective.setRequestAny.normal);
+  selective.setRequestAny.normal.hasSelection = true;
+  selective.setRequestAny.normal.selection.selector = 1u;
+  selective.setRequestAny.normal.selection.parameters.type =
+    dlms::apdu::DlmsDataType::NullData;
+  selective.setRequestAny.data = MakeLongUnsignedData(1u);
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::UnsupportedFeature,
+            processor.ProcessRequest(EncodeApdu(selective), response));
+  EXPECT_EQ(0, handler.setCalls);
+}
+
+TEST(XdlmsServerApduProcessor, RejectsUnconfirmedSetAndHandlerFailures)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
+  std::vector<std::uint8_t> response;
+  response.push_back(0xFFu);
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::UnsupportedFeature,
+            processor.ProcessRequest(MakeSetRequest(0x08u, 1u), response));
+  EXPECT_TRUE(response.empty());
+  EXPECT_EQ(0, handler.setCalls);
+
+  handler.setStatus = dlms::xdlms::XdlmsStatus::InvalidState;
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::InvalidState,
+            processor.ProcessRequest(MakeSetRequest(0x88u, 1u), response));
+  EXPECT_TRUE(response.empty());
+  EXPECT_EQ(1, handler.setCalls);
 }
