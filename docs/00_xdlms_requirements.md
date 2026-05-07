@@ -78,6 +78,7 @@ Rules:
   ACTION, ciphered APDUs, and ACSE APDUs as unsupported or decode failures;
 - derive invoke id, priority, and service-class bits from
   invoke-id-and-priority;
+- reject unconfirmed GET requests without producing response bytes;
 - dispatch through `XdlmsServerDispatcher`;
 - copy the request invoke id and priority into the response;
 - encode either xDLMS data bytes from the handler or data-access-result;

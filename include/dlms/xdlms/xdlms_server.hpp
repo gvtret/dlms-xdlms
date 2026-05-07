@@ -4,6 +4,7 @@
 #include "dlms/xdlms/xdlms_types.hpp"
 
 #include <cstdint>
+#include <vector>
 
 namespace dlms {
 namespace xdlms {
@@ -36,6 +37,19 @@ public:
 
 private:
   IXdlmsServerHandler& handler_;
+};
+
+class XdlmsServerApduProcessor
+{
+public:
+  explicit XdlmsServerApduProcessor(XdlmsServerDispatcher& dispatcher);
+
+  XdlmsStatus ProcessRequest(
+    const std::vector<std::uint8_t>& requestApdu,
+    std::vector<std::uint8_t>& responseApdu);
+
+private:
+  XdlmsServerDispatcher& dispatcher_;
 };
 
 GetIndication EmptyGetIndication();

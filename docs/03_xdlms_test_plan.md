@@ -49,6 +49,7 @@ Required APDU boundary tests:
 - successful handler data response encodes GET-RESPONSE-NORMAL;
 - data-access-result response encodes GET-RESPONSE-NORMAL access result;
 - response invoke id and priority mirror the request;
+- unconfirmed GET request maps to `UnsupportedFeature`;
 - malformed APDU maps to `DecodeFailed`;
 - non-GET APDU maps to `UnsupportedFeature`;
 - GET-NEXT, GET-WITH-LIST, and selective access map to `UnsupportedFeature`;
