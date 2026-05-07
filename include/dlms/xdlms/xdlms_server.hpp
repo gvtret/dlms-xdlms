@@ -16,6 +16,14 @@ struct GetIndication
   CosemAttributeDescriptor descriptor;
 };
 
+struct SetIndication
+{
+  std::uint8_t invokeId;
+  ServiceOptions options;
+  CosemAttributeDescriptor descriptor;
+  std::vector<std::uint8_t> data;
+};
+
 class IXdlmsServerHandler
 {
 public:
@@ -24,6 +32,10 @@ public:
   virtual XdlmsStatus HandleGet(
     const GetIndication& indication,
     GetResult& result) = 0;
+
+  virtual XdlmsStatus HandleSet(
+    const SetIndication& indication,
+    SetResult& result);
 };
 
 class XdlmsServerDispatcher
@@ -34,6 +46,10 @@ public:
   XdlmsStatus DispatchGet(
     const GetIndication& indication,
     GetResult& result);
+
+  XdlmsStatus DispatchSet(
+    const SetIndication& indication,
+    SetResult& result);
 
 private:
   IXdlmsServerHandler& handler_;
@@ -53,6 +69,7 @@ private:
 };
 
 GetIndication EmptyGetIndication();
+SetIndication EmptySetIndication();
 XdlmsStatus ValidateInvokeId(std::uint8_t invokeId);
 
 } // namespace xdlms

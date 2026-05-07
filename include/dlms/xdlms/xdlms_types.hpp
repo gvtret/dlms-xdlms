@@ -51,6 +51,12 @@ struct GetResult
   std::uint8_t accessResult;
 };
 
+struct SetResult
+{
+  std::uint8_t invokeId;
+  std::uint8_t accessResult;
+};
+
 class InvokeIdAllocator
 {
 public:
@@ -65,6 +71,7 @@ private:
 ServiceOptions DefaultServiceOptions();
 CosemAttributeDescriptor EmptyCosemAttributeDescriptor();
 GetResult EmptyGetResult();
+SetResult EmptySetResult();
 XdlmsStatus ValidateDescriptor(
   const CosemAttributeDescriptor& descriptor);
 

@@ -84,6 +84,14 @@ GetResult EmptyGetResult()
   return result;
 }
 
+SetResult EmptySetResult()
+{
+  SetResult result;
+  result.invokeId = 0;
+  result.accessResult = 0;
+  return result;
+}
+
 XdlmsStatus ValidateDescriptor(
   const CosemAttributeDescriptor& descriptor)
 {

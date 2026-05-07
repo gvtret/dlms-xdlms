@@ -107,6 +107,15 @@ IXdlmsServerHandler::~IXdlmsServerHandler()
 {
 }
 
+XdlmsStatus IXdlmsServerHandler::HandleSet(
+  const SetIndication& indication,
+  SetResult& result)
+{
+  (void)indication;
+  (void)result;
+  return XdlmsStatus::UnsupportedFeature;
+}
+
 XdlmsServerDispatcher::XdlmsServerDispatcher(IXdlmsServerHandler& handler)
   : handler_(handler)
 {
@@ -128,6 +137,35 @@ XdlmsStatus XdlmsServerDispatcher::DispatchGet(
 
   GetResult handlerResult = EmptyGetResult();
   status = handler_.HandleGet(indication, handlerResult);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  handlerResult.invokeId = indication.invokeId;
+  result = handlerResult;
+  return XdlmsStatus::Ok;
+}
+
+XdlmsStatus XdlmsServerDispatcher::DispatchSet(
+  const SetIndication& indication,
+  SetResult& result)
+{
+  XdlmsStatus status = ValidateInvokeId(indication.invokeId);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  status = ValidateDescriptor(indication.descriptor);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  if (indication.data.empty()) {
+    return XdlmsStatus::InvalidArgument;
+  }
+
+  SetResult handlerResult = EmptySetResult();
+  status = handler_.HandleSet(indication, handlerResult);
   if (status != XdlmsStatus::Ok) {
     return status;
   }
@@ -197,6 +235,16 @@ GetIndication EmptyGetIndication()
   indication.invokeId = 0u;
   indication.options = DefaultServiceOptions();
   indication.descriptor = EmptyCosemAttributeDescriptor();
+  return indication;
+}
+
+SetIndication EmptySetIndication()
+{
+  SetIndication indication;
+  indication.invokeId = 0u;
+  indication.options = DefaultServiceOptions();
+  indication.descriptor = EmptyCosemAttributeDescriptor();
+  indication.data.clear();
   return indication;
 }
 
