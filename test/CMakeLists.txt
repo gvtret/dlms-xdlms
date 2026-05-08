@@ -11,6 +11,7 @@ endif()
 
 add_executable(dlms_xdlms_tests
   xdlms/test_xdlms_client.cpp
+  xdlms/test_xdlms_security.cpp
   xdlms/test_xdlms_server_apdu.cpp
   xdlms/test_xdlms_server.cpp
   xdlms/test_xdlms_types.cpp)

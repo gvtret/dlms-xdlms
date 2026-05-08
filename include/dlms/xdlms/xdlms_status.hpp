@@ -17,6 +17,7 @@ enum class XdlmsStatus
   ServiceRejected,
   BlockTransferRequired,
   UnsupportedFeature,
+  SecurityFailed,
   InternalError
 };
 

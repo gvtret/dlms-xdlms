@@ -30,6 +30,8 @@ const char* XdlmsStatusName(XdlmsStatus status)
     return "BlockTransferRequired";
   case XdlmsStatus::UnsupportedFeature:
     return "UnsupportedFeature";
+  case XdlmsStatus::SecurityFailed:
+    return "SecurityFailed";
   case XdlmsStatus::InternalError:
     return "InternalError";
   }

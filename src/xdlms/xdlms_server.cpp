@@ -5,6 +5,7 @@
 #include "dlms/apdu/get.hpp"
 #include "dlms/apdu/set.hpp"
 #include "dlms/apdu/xdlms.hpp"
+#include "dlms/security/ciphered_apdu_processor.hpp"
 
 namespace dlms {
 namespace xdlms {
@@ -422,6 +423,15 @@ XdlmsStatus XdlmsServerDispatcher::DispatchAction(
 XdlmsServerApduProcessor::XdlmsServerApduProcessor(
   XdlmsServerDispatcher& dispatcher)
   : dispatcher_(dispatcher)
+  , security_(0)
+{
+}
+
+XdlmsServerApduProcessor::XdlmsServerApduProcessor(
+  XdlmsServerDispatcher& dispatcher,
+  dlms::security::CipheredApduProcessor& security)
+  : dispatcher_(dispatcher)
+  , security_(&security)
 {
 }
 
@@ -431,27 +441,58 @@ XdlmsStatus XdlmsServerApduProcessor::ProcessRequest(
 {
   responseApdu.clear();
 
+  std::vector<std::uint8_t> plainRequest = requestApdu;
+  if (security_ != 0) {
+    dlms::security::SecurityByteView protectedApdu;
+    protectedApdu.data = requestApdu.empty() ? 0 : &requestApdu[0];
+    protectedApdu.size = requestApdu.size();
+    if (security_->Unprotect(protectedApdu, plainRequest) !=
+        dlms::security::SecurityStatus::Ok) {
+      return XdlmsStatus::SecurityFailed;
+    }
+  }
+
   dlms::apdu::XdlmsApdu request;
   if (dlms::apdu::DecodeXdlmsApdu(
-        requestApdu.empty() ? 0 : &requestApdu[0],
-        requestApdu.size(),
+        plainRequest.empty() ? 0 : &plainRequest[0],
+        plainRequest.size(),
         request) != dlms::apdu::ApduStatus::Ok) {
     return XdlmsStatus::DecodeFailed;
   }
 
+  XdlmsStatus status = XdlmsStatus::UnsupportedFeature;
   switch (request.kind) {
     case dlms::apdu::XdlmsApduKind::GetRequest:
-      return ProcessGetRequest(request, dispatcher_, responseApdu);
+      status = ProcessGetRequest(request, dispatcher_, responseApdu);
+      break;
 
     case dlms::apdu::XdlmsApduKind::SetRequest:
-      return ProcessSetRequest(request, dispatcher_, responseApdu);
+      status = ProcessSetRequest(request, dispatcher_, responseApdu);
+      break;
 
     case dlms::apdu::XdlmsApduKind::ActionRequest:
-      return ProcessActionRequest(request, dispatcher_, responseApdu);
+      status = ProcessActionRequest(request, dispatcher_, responseApdu);
+      break;
 
     default:
       return XdlmsStatus::UnsupportedFeature;
   }
+
+  if (status != XdlmsStatus::Ok || security_ == 0) {
+    return status;
+  }
+
+  std::vector<std::uint8_t> plainResponse = responseApdu;
+  dlms::security::SecurityByteView plain;
+  plain.data = plainResponse.empty() ? 0 : &plainResponse[0];
+  plain.size = plainResponse.size();
+  if (security_->Protect(plain, responseApdu) !=
+      dlms::security::SecurityStatus::Ok) {
+    responseApdu.clear();
+    return XdlmsStatus::SecurityFailed;
+  }
+
+  return XdlmsStatus::Ok;
 }
 
 GetIndication EmptyGetIndication()

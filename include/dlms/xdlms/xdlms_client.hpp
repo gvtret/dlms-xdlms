@@ -5,6 +5,9 @@
 #include "dlms/xdlms/xdlms_types.hpp"
 
 namespace dlms {
+namespace security {
+class CipheredApduProcessor;
+}
 namespace xdlms {
 
 class XdlmsClient
@@ -13,6 +16,11 @@ public:
   XdlmsClient(
     dlms::profile::IApduChannel& channel,
     dlms::association::AssociationClient& association);
+
+  XdlmsClient(
+    dlms::profile::IApduChannel& channel,
+    dlms::association::AssociationClient& association,
+    dlms::security::CipheredApduProcessor& security);
 
   XdlmsStatus Get(
     const CosemAttributeDescriptor& descriptor,
@@ -35,6 +43,7 @@ private:
 
   dlms::profile::IApduChannel& channel_;
   dlms::association::AssociationClient& association_;
+  dlms::security::CipheredApduProcessor* security_;
   InvokeIdAllocator invokeIds_;
 };
 

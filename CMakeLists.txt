@@ -25,6 +25,10 @@ if(NOT TARGET dlms_apdu AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../dlms-apdu/CMa
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../dlms-apdu" "${CMAKE_CURRENT_BINARY_DIR}/_deps/dlms-apdu")
 endif()
 
+if(NOT TARGET dlms_security AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../dlms-security/CMakeLists.txt")
+  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../dlms-security" "${CMAKE_CURRENT_BINARY_DIR}/_deps/dlms-security")
+endif()
+
 target_compile_features(dlms_xdlms PUBLIC cxx_std_11)
 
 target_include_directories(dlms_xdlms
@@ -35,7 +39,8 @@ target_link_libraries(dlms_xdlms
   PUBLIC
     dlms_association
     dlms_profile
-    dlms_apdu)
+    dlms_apdu
+    dlms_security)
 
 set(DLMS_XDLMS_HAS_TYPES_API ON CACHE INTERNAL
   "dlms-xdlms exposes xDLMS service types")

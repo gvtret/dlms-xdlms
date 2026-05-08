@@ -6,6 +6,7 @@
 #include "dlms/apdu/get.hpp"
 #include "dlms/apdu/set.hpp"
 #include "dlms/apdu/xdlms.hpp"
+#include "dlms/security/ciphered_apdu_processor.hpp"
 
 namespace dlms {
 namespace xdlms {
@@ -114,6 +115,7 @@ XdlmsStatus CopyEncodedData(
 
 XdlmsStatus SendAndReceive(
   dlms::profile::IApduChannel& channel,
+  dlms::security::CipheredApduProcessor* security,
   const dlms::apdu::XdlmsApdu& request,
   dlms::apdu::XdlmsApdu& response)
 {
@@ -123,9 +125,20 @@ XdlmsStatus SendAndReceive(
     return XdlmsStatus::EncodeFailed;
   }
 
+  std::vector<std::uint8_t> outboundRequest = encodedRequest;
+  if (security != 0) {
+    dlms::security::SecurityByteView plain;
+    plain.data = encodedRequest.empty() ? 0 : &encodedRequest[0];
+    plain.size = encodedRequest.size();
+    if (security->Protect(plain, outboundRequest) !=
+        dlms::security::SecurityStatus::Ok) {
+      return XdlmsStatus::SecurityFailed;
+    }
+  }
+
   dlms::profile::ProfileByteView view = {};
-  view.data = encodedRequest.empty() ? 0 : &encodedRequest[0];
-  view.size = encodedRequest.size();
+  view.data = outboundRequest.empty() ? 0 : &outboundRequest[0];
+  view.size = outboundRequest.size();
   if (channel.SendApdu(view) != dlms::profile::ProfileStatus::Ok) {
     return XdlmsStatus::SendFailed;
   }
@@ -135,9 +148,20 @@ XdlmsStatus SendAndReceive(
     return XdlmsStatus::ReceiveFailed;
   }
 
+  std::vector<std::uint8_t> inboundResponse = encodedResponse;
+  if (security != 0) {
+    dlms::security::SecurityByteView protectedApdu;
+    protectedApdu.data = encodedResponse.empty() ? 0 : &encodedResponse[0];
+    protectedApdu.size = encodedResponse.size();
+    if (security->Unprotect(protectedApdu, inboundResponse) !=
+        dlms::security::SecurityStatus::Ok) {
+      return XdlmsStatus::SecurityFailed;
+    }
+  }
+
   return dlms::apdu::DecodeXdlmsApdu(
-      encodedResponse.empty() ? 0 : &encodedResponse[0],
-      encodedResponse.size(),
+      inboundResponse.empty() ? 0 : &inboundResponse[0],
+      inboundResponse.size(),
       response) == dlms::apdu::ApduStatus::Ok
     ? XdlmsStatus::Ok
     : XdlmsStatus::DecodeFailed;
@@ -150,6 +174,18 @@ XdlmsClient::XdlmsClient(
   dlms::association::AssociationClient& association)
   : channel_(channel)
   , association_(association)
+  , security_(0)
+  , invokeIds_()
+{
+}
+
+XdlmsClient::XdlmsClient(
+  dlms::profile::IApduChannel& channel,
+  dlms::association::AssociationClient& association,
+  dlms::security::CipheredApduProcessor& security)
+  : channel_(channel)
+  , association_(association)
+  , security_(&security)
   , invokeIds_()
 {
 }
@@ -180,7 +216,7 @@ XdlmsStatus XdlmsClient::Get(
     descriptor.attributeId);
 
   dlms::apdu::XdlmsApdu response;
-  status = SendAndReceive(channel_, request, response);
+  status = SendAndReceive(channel_, security_, request, response);
   if (status != XdlmsStatus::Ok) {
     return status;
   }
@@ -246,7 +282,7 @@ XdlmsStatus XdlmsClient::Set(
   request.setRequestAny.data = data;
 
   dlms::apdu::XdlmsApdu response;
-  status = SendAndReceive(channel_, request, response);
+  status = SendAndReceive(channel_, security_, request, response);
   if (status != XdlmsStatus::Ok) {
     return status;
   }
@@ -311,7 +347,7 @@ XdlmsStatus XdlmsClient::Action(
   request.actionRequestAny.normal.invocationParameter = parameter;
 
   dlms::apdu::XdlmsApdu response;
-  status = SendAndReceive(channel_, request, response);
+  status = SendAndReceive(channel_, security_, request, response);
   if (status != XdlmsStatus::Ok) {
     return status;
   }

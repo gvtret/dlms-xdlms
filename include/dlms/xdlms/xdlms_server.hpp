@@ -7,6 +7,9 @@
 #include <vector>
 
 namespace dlms {
+namespace security {
+class CipheredApduProcessor;
+}
 namespace xdlms {
 
 struct GetIndication
@@ -76,6 +79,9 @@ class XdlmsServerApduProcessor
 {
 public:
   explicit XdlmsServerApduProcessor(XdlmsServerDispatcher& dispatcher);
+  XdlmsServerApduProcessor(
+    XdlmsServerDispatcher& dispatcher,
+    dlms::security::CipheredApduProcessor& security);
 
   XdlmsStatus ProcessRequest(
     const std::vector<std::uint8_t>& requestApdu,
@@ -83,6 +89,7 @@ public:
 
 private:
   XdlmsServerDispatcher& dispatcher_;
+  dlms::security::CipheredApduProcessor* security_;
 };
 
 GetIndication EmptyGetIndication();
