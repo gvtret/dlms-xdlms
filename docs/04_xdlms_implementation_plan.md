@@ -334,3 +334,35 @@ Commit message:
 ```text
 feat(xdlms): implement client set action flow
 ```
+
+## Phase 21. Security APDU Boundary Documentation
+
+Deliverables:
+
+- requirements for optional `dlms-security` use at the xDLMS APDU boundary
+- `XdlmsClient` and `XdlmsServerApduProcessor` security constructor contract
+- architecture and sequence diagrams for protect/unprotect flow
+- security APDU boundary test plan
+
+Commit message:
+
+```text
+docs(xdlms): define security apdu boundary
+```
+
+## Phase 22. Security APDU Boundary Implementation
+
+Deliverables:
+
+- optional `CipheredApduProcessor` reference in `XdlmsClient`
+- optional `CipheredApduProcessor` reference in `XdlmsServerApduProcessor`
+- request protect and response unprotect flow for client GET/SET/ACTION
+- request unprotect and response protect flow for server APDU processing
+- `SecurityFailed` xDLMS status mapping
+- focused tests for protected request/response and authentication failures
+
+Commit message:
+
+```text
+feat(xdlms): add security apdu boundary
+```

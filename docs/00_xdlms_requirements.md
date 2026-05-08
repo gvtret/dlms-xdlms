@@ -8,10 +8,12 @@ and server-side GET/SET/ACTION dispatch contracts.
 
 The layer shall:
 
-- expose high-level LN client service calls for GET, then later SET and ACTION;
+- expose high-level LN client service calls for GET, SET, and ACTION;
 - define server-side service dispatch contracts for GET, SET, and ACTION;
 - use `dlms-association` only as the established association boundary;
 - use `dlms-apdu` for xDLMS APDU encode/decode;
+- optionally use `dlms-security` to protect and unprotect complete xDLMS APDU
+  bytes at the application-layer boundary;
 - keep lower profile and transport ownership delegated to lower layers;
 - keep COSEM object storage and method execution out of this repo;
 - keep public ergonomic connection setup out of this repo.
@@ -171,14 +173,38 @@ Rules:
 
 ## 9. Security Boundary
 
-The v1 layer shall not protect or unprotect ciphered APDUs. Security options
-may be modeled later, but actual ciphering belongs in `dlms-security`.
+The xDLMS layer may optionally protect outbound APDUs and unprotect inbound
+APDUs through `dlms-security`. The cryptographic policy, keys, invocation
+counters, and system titles remain owned by `dlms-security`; `dlms-xdlms` only
+decides when a complete xDLMS APDU byte vector crosses the security boundary.
+
+Rules:
+
+- client GET/SET/ACTION first encode an unprotected xDLMS request APDU through
+  `dlms-apdu`;
+- when configured, the client passes the encoded request to
+  `CipheredApduProcessor::Protect()` before sending it to `IApduChannel`;
+- when configured, the client passes the received response to
+  `CipheredApduProcessor::Unprotect()` before decoding it through `dlms-apdu`;
+- server APDU processing unprotects the request before xDLMS decode and
+  protects the encoded response before returning it to the caller;
+- no-security construction keeps the existing unprotected behavior;
+- security failures map to a dedicated xDLMS status and do not close or release
+  an association.
+
+Document RAG alignment:
+
+- DLMS/COSEM builds the unprotected service APDU first, then builds the
+  ciphered APDU when protection is required;
+- on receive, the application layer deciphers the APDU and restores the
+  original unprotected APDU before invoking the service primitive;
+- ciphered APDUs carry security control information, invocation counter,
+  encrypted APDU bytes, and authentication tag.
 
 ## 10. Out of Scope
 
 - association opening and release;
 - Wrapper, HDLC, LLC, TCP, UDP, and serial transport ownership;
-- client-side SET and ACTION services;
 - server-side ACTION dispatch implementation;
 - server-side SET selective access, list, and block-transfer forms;
 - server-side GET-NEXT, GET-WITH-LIST, and block transfer;
@@ -186,6 +212,5 @@ may be modeled later, but actual ciphering belongs in `dlms-security`.
 - GET-WITH-LIST;
 - GET-NEXT and block transfer;
 - selective access parameters;
-- ciphered xDLMS APDUs;
 - COSEM object registry and access-right decisions;
 - public facade connection options.

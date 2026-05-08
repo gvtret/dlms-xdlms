@@ -29,6 +29,7 @@ No C ABI is planned for the first implementation.
 - `ServiceRejected`
 - `BlockTransferRequired`
 - `UnsupportedFeature`
+- `SecurityFailed`
 - `InternalError`
 
 ## 3. Types
@@ -71,6 +72,7 @@ of `0` represents success.
 
 ```cpp
 dlms::xdlms::XdlmsClient client(channel, association);
+dlms::xdlms::XdlmsClient secureClient(channel, association, security);
 
 dlms::xdlms::CosemAttributeDescriptor descriptor = {};
 descriptor.classId = 1;
@@ -81,8 +83,14 @@ dlms::xdlms::GetResult result;
 const dlms::xdlms::XdlmsStatus status = client.Get(descriptor, result);
 ```
 
-`XdlmsClient` does not own the association object and does not own the profile
-APDU channel. The caller must keep both alive for the client lifetime.
+`XdlmsClient` does not own the association object, profile APDU channel, or
+optional security processor. The caller must keep all supplied objects alive for
+the client lifetime.
+
+When constructed with a `dlms::security::CipheredApduProcessor`, the client
+protects encoded request APDUs before `SendApdu()` and unprotects received
+response APDUs before xDLMS decode. The public GET/SET/ACTION service contract
+does not otherwise change.
 
 ## 5. Server
 
@@ -159,6 +167,7 @@ GET or SET indication, and encodes the corresponding response:
 ```cpp
 dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
 dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
+dlms::xdlms::XdlmsServerApduProcessor secureProcessor(dispatcher, security);
 
 std::vector<std::uint8_t> response;
 const dlms::xdlms::XdlmsStatus status =
@@ -166,7 +175,9 @@ const dlms::xdlms::XdlmsStatus status =
 ```
 
 `ProcessRequest` clears `response` before work starts and writes response bytes
-only when encoding succeeds.
+only when encoding succeeds. When constructed with a
+`dlms::security::CipheredApduProcessor`, the processor unprotects the request
+before xDLMS decode and protects the encoded response before returning it.
 
 Supported first APDU shape:
 
@@ -184,9 +195,14 @@ Unsupported first APDU shapes:
 - SET-WITH-LIST;
 - SET-WITH-LIST-AND-FIRST-DATABLOCK;
 - selective access;
-- ACTION;
-- ciphered APDUs;
+- unsupported ACTION shapes;
+- ciphered APDUs when the processor was not constructed with a security
+  processor;
 - ACSE APDUs.
+
+Security failures map to `SecurityFailed`. This includes protection,
+unprotection, authentication, replay, missing-key, invalid-key, and invocation
+counter failures reported by `dlms-security`.
 
 ## 7. Module Diagram
 
@@ -194,6 +210,8 @@ Unsupported first APDU shapes:
 classDiagram
   class XdlmsClient {
     +Get(CosemAttributeDescriptor, GetResult&) XdlmsStatus
+    +Set(CosemAttributeDescriptor, vector~uint8_t~, SetResult&) XdlmsStatus
+    +Action(CosemMethodDescriptor, vector~uint8_t~, ActionResult&) XdlmsStatus
   }
 
   class InvokeIdAllocator {
@@ -239,6 +257,11 @@ classDiagram
     +ProcessRequest(vector~uint8_t~, vector~uint8_t~&) XdlmsStatus
   }
 
+  class CipheredApduProcessor {
+    +Protect(vector~uint8_t~, vector~uint8_t~&) SecurityStatus
+    +Unprotect(vector~uint8_t~, vector~uint8_t~&) SecurityStatus
+  }
+
   XdlmsClient --> InvokeIdAllocator
   XdlmsClient --> CosemAttributeDescriptor
   XdlmsClient --> GetResult
@@ -252,4 +275,6 @@ classDiagram
   XdlmsServerDispatcher --> SetIndication
   XdlmsServerDispatcher --> SetResult
   XdlmsServerApduProcessor --> XdlmsServerDispatcher
+  XdlmsClient --> CipheredApduProcessor
+  XdlmsServerApduProcessor --> CipheredApduProcessor
 ```

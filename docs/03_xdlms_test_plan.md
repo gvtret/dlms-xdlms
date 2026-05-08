@@ -88,7 +88,33 @@ Required APDU boundary tests:
   `UnsupportedFeature`;
 - handler failure leaves response output empty.
 
-## 7. Verification Commands
+## 7. Security APDU Boundary Tests
+
+Required client tests:
+
+- no-security client GET/SET/ACTION behavior remains unchanged;
+- secure client sends a ciphered request APDU instead of the raw service APDU;
+- secure client unprotects a ciphered response before normal service decode;
+- request protection failure maps to `SecurityFailed`;
+- response unprotection or authentication failure maps to `SecurityFailed`.
+
+Required server APDU tests:
+
+- no-security processor keeps existing unprotected GET/SET/ACTION behavior;
+- secure processor unprotects a ciphered request before dispatch;
+- secure processor protects the encoded response before returning it;
+- malformed or unauthenticated ciphered request maps to `SecurityFailed`;
+- response protection failure maps to `SecurityFailed`.
+
+Required integration tests:
+
+- a protected client request can be unprotected by a server processor configured
+  with the peer system title and shared global keys;
+- the server response can be unprotected by the client processor and decoded as
+  the original xDLMS service response;
+- invocation counters advance monotonically on both peers.
+
+## 8. Verification Commands
 
 Use the existing workspace build directory when available:
 

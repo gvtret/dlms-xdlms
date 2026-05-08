@@ -8,12 +8,14 @@ flowchart TD
   Server["dlms-server adapter"]
   XDlms["lib/dlms-xdlms"]
   Association["lib/dlms-association"]
+  Security["lib/dlms-security"]
   Apdu["lib/dlms-apdu"]
   Profile["lib/dlms-profile"]
 
   Facade --> XDlms
   Server --> XDlms
   XDlms --> Association
+  XDlms --> Security
   XDlms --> Apdu
   XDlms --> Profile
 ```
@@ -181,14 +183,61 @@ The processor does not evaluate write permissions and does not decode the
 semantic COSEM value. It only preserves the xDLMS `Data` bytes across the APDU
 and decoded-dispatch boundary.
 
-## 8. Ownership
+## 8. Security APDU Boundary
+
+```mermaid
+sequenceDiagram
+  participant App as Caller
+  participant Client as XdlmsClient
+  participant Security as CipheredApduProcessor
+  participant Channel as IApduChannel
+
+  App->>Client: Get/Set/Action
+  Client->>Client: Encode unprotected xDLMS APDU
+  Client->>Security: Protect(requestApdu)
+  Security-->>Client: ciphered request APDU
+  Client->>Channel: SendApdu(ciphered request)
+  Channel-->>Client: ciphered response APDU
+  Client->>Security: Unprotect(responseApdu)
+  Security-->>Client: unprotected response APDU
+  Client->>Client: Decode xDLMS response
+  Client-->>App: service result
+```
+
+```mermaid
+sequenceDiagram
+  participant Caller as Association or Server Boundary
+  participant Processor as XdlmsServerApduProcessor
+  participant Security as CipheredApduProcessor
+  participant Dispatcher as XdlmsServerDispatcher
+
+  Caller->>Processor: ProcessRequest(ciphered request)
+  Processor->>Security: Unprotect(requestApdu)
+  Security-->>Processor: unprotected request APDU
+  Processor->>Processor: Decode and validate xDLMS service
+  Processor->>Dispatcher: Dispatch indication
+  Dispatcher-->>Processor: service result
+  Processor->>Processor: Encode unprotected response APDU
+  Processor->>Security: Protect(responseApdu)
+  Security-->>Processor: ciphered response APDU
+  Processor-->>Caller: ciphered response
+```
+
+The xDLMS layer remains a consumer of `dlms-security`. It does not choose
+keys, maintain invocation counters directly, build system titles, or implement
+AES-GCM. It only preserves the DLMS/COSEM ordering: service APDU first,
+ciphered APDU at the application-layer boundary.
+
+## 9. Ownership
 
 `XdlmsClient` stores non-owning references to the association and profile APDU
-channel boundaries. Server dispatch stores non-owning access to an xDLMS server
-handler. The layer does not own transport resources, association lifetime, or
-COSEM object storage.
+channel boundaries and may store a non-owning reference to a security
+processor. Server dispatch stores non-owning access to an xDLMS server handler.
+The server APDU processor may also store a non-owning security processor
+reference. The layer does not own transport resources, association lifetime,
+security material, or COSEM object storage.
 
-## 9. Error Model
+## 10. Error Model
 
 The layer returns status codes only. Runtime API paths do not throw exceptions.
 Failures are reported at the xDLMS service boundary and do not close or release
