@@ -241,6 +241,10 @@ Rules:
   `DecodeFailed`;
 - security protect/unprotect applies to every block request and response.
 
+ACTION block transfer remains a later phase and is documented separately
+because ACTION can block either method invocation parameters or return
+parameters.
+
 ## 11. Out of Scope
 
 - association opening and release;
@@ -252,7 +256,7 @@ Rules:
 - GET-WITH-LIST;
 - server-side GET block production;
 - server-side SET block reassembly;
-- ACTION block transfer;
+- ACTION block transfer implementation;
 - selective access parameters;
 - COSEM object registry and access-right decisions;
 - public facade connection options.

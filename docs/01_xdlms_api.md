@@ -49,6 +49,7 @@ No C ABI is planned for the first implementation.
 - `allowBlockTransfer`
 - `maxBlockTransferBytes`
 - `maxSetBlockPayloadBytes`
+- future `maxActionBlockPayloadBytes`
 
 The default is confirmed normal priority.
 Block transfer is enabled by default with a finite maximum collected payload
@@ -236,6 +237,10 @@ const dlms::xdlms::XdlmsStatus status =
 Blocked SET sends `SET-REQUEST-WITH-FIRST-DATABLOCK` followed by
 `SET-REQUEST-WITH-DATABLOCK` requests. The final response is
 `SET-RESPONSE-LAST-DATABLOCK`.
+
+ACTION block-transfer APIs are planned but not implemented in this phase.
+ACTION will need an options-aware overload because response-side pblock
+collection and request-side pblock sending have different validation rules.
 
 ## 8. Module Diagram
 

@@ -272,7 +272,30 @@ invoke-id-and-priority byte for all blocks, validates acknowledged block
 numbers, and returns the final data-access-result through the existing
 `SetResult` contract.
 
-## 11. Ownership
+## 11. Client ACTION Block Transfer
+
+```mermaid
+sequenceDiagram
+  participant App as Caller
+  participant Client as XdlmsClient
+  participant Blocks as ActionResponseBlockCollector
+  participant Channel as IApduChannel
+
+  App->>Client: Action(descriptor, parameter)
+  Client->>Channel: ACTION-REQUEST-NORMAL
+  Channel-->>Client: ACTION-RESPONSE-WITH-PBLOCK block 1, last=false
+  Client->>Blocks: Append block 1
+  Client->>Channel: ACTION-REQUEST-NEXT-PBLOCK block 1
+  Channel-->>Client: ACTION-RESPONSE-WITH-PBLOCK block 2, last=true
+  Client->>Blocks: Append block 2
+  Client->>Blocks: Decode action response payload
+  Client-->>App: ActionResult
+```
+
+ACTION block transfer is kept separate from GET and SET because the service can
+block both request invocation parameters and response return parameters.
+
+## 12. Ownership
 
 `XdlmsClient` stores non-owning references to the association and profile APDU
 channel boundaries and may store a non-owning reference to a security
@@ -282,7 +305,7 @@ reference. The layer does not own transport resources, association lifetime,
 security material, COSEM object storage, or block-transfer persistence outside
 one service call.
 
-## 12. Error Model
+## 13. Error Model
 
 The layer returns status codes only. Runtime API paths do not throw exceptions.
 Failures are reported at the xDLMS service boundary and do not close or release

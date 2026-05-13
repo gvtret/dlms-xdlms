@@ -145,7 +145,22 @@ Required client tests:
 - secure client protects every SET block request and unprotects every SET block
   response.
 
-## 10. Verification Commands
+## 10. Client ACTION Block Transfer Tests
+
+Future response-side tests:
+
+- normal ACTION remains unchanged;
+- first pblock plus final pblock returns decoded action result;
+- generated `ACTION-REQUEST-NEXT-PBLOCK` carries the latest received response
+  block number;
+- repeated or skipped response block maps to `DecodeFailed`;
+- response invoke-id mismatch maps to `InvokeIdMismatch`;
+- disabled block transfer maps first response pblock to
+  `BlockTransferRequired`;
+- secure client protects every next-pblock request and unprotects every pblock
+  response.
+
+## 11. Verification Commands
 
 Use the existing workspace build directory when available:
 

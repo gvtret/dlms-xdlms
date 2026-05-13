@@ -456,3 +456,49 @@ Commit message:
 ```text
 test: cover xdlms set block transfer
 ```
+
+## Phase 29. ACTION Block Transfer Documentation
+
+Deliverables:
+
+- ACTION block-transfer requirements
+- API contract for future ACTION block service options
+- architecture and sequence diagrams
+- response-side and request-side phase split
+
+Commit message:
+
+```text
+docs(xdlms): define action block transfer
+```
+
+## Phase 30. Client ACTION Response Blocks
+
+Deliverables:
+
+- options-aware `XdlmsClient::Action` overload
+- ACTION-RESPONSE-WITH-PBLOCK collection
+- ACTION-REQUEST-NEXT-PBLOCK encode loop
+- normal single-method action response payload decode
+- focused client unit tests
+
+Commit message:
+
+```text
+feat(xdlms): handle action response blocks
+```
+
+## Phase 31. Root Integration Update
+
+Deliverables:
+
+- root submodule pointer update
+- root integration test for multi-block ACTION response over a fake APDU
+  channel
+- full root build and test run
+
+Commit message:
+
+```text
+test: cover xdlms action response block transfer
+```
