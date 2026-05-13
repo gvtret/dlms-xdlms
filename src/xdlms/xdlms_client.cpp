@@ -180,7 +180,7 @@ public:
   {
   }
 
-  XdlmsStatus AppendGetBlock(const dlms::apdu::DataBlockG& block)
+  XdlmsStatus AppendBlock(const dlms::apdu::DataBlockG& block)
   {
     if (block.blockNumber != nextBlockNumber_) {
       return XdlmsStatus::DecodeFailed;
@@ -226,6 +226,19 @@ dlms::apdu::XdlmsApdu MakeGetRequestNext(
   return request;
 }
 
+dlms::apdu::XdlmsApdu MakeActionRequestNextPblock(
+  std::uint8_t invokeIdAndPriority,
+  std::uint32_t blockNumber)
+{
+  dlms::apdu::XdlmsApdu request;
+  request.kind = dlms::apdu::XdlmsApduKind::ActionRequest;
+  request.actionRequestAny.choice =
+    dlms::apdu::ActionRequestChoice::NextPblock;
+  request.actionRequestAny.invokeIdAndPriority = invokeIdAndPriority;
+  request.actionRequestAny.blockNumber = blockNumber;
+  return request;
+}
+
 XdlmsStatus ReceiveGetResponse(
   dlms::profile::IApduChannel& channel,
   dlms::security::CipheredApduProcessor* security,
@@ -239,6 +252,23 @@ XdlmsStatus ReceiveGetResponse(
     return status;
   }
   return response.kind == dlms::apdu::XdlmsApduKind::GetResponse
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::DecodeFailed;
+}
+
+XdlmsStatus ReceiveActionResponse(
+  dlms::profile::IApduChannel& channel,
+  dlms::security::CipheredApduProcessor* security,
+  const dlms::apdu::XdlmsApdu& request,
+  std::vector<std::uint8_t>& decodedResponseBytes,
+  dlms::apdu::XdlmsApdu& response)
+{
+  const XdlmsStatus status =
+    SendAndReceive(channel, security, request, decodedResponseBytes, response);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+  return response.kind == dlms::apdu::XdlmsApduKind::ActionResponse
     ? XdlmsStatus::Ok
     : XdlmsStatus::DecodeFailed;
 }
@@ -299,6 +329,49 @@ XdlmsStatus ValidateSetBlockResponse(
   return result.accessResult == 0u
     ? XdlmsStatus::Ok
     : XdlmsStatus::ServiceRejected;
+}
+
+XdlmsStatus CopyActionResponse(
+  const dlms::apdu::ActionResponse& response,
+  std::uint8_t invokeId,
+  ActionResult& result)
+{
+  if ((response.invokeIdAndPriority & 0x0Fu) != invokeId) {
+    return XdlmsStatus::InvokeIdMismatch;
+  }
+
+  result.invokeId = invokeId;
+  result.actionResult = response.normal.result;
+  if (response.normal.hasReturnParameter) {
+    const XdlmsStatus status = CopyEncodedData(
+      response.normal.returnParameter,
+      result);
+    if (status != XdlmsStatus::Ok) {
+      return status;
+    }
+  }
+
+  return result.actionResult == 0u
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::ServiceRejected;
+}
+
+XdlmsStatus DecodeActionBlockPayload(
+  std::uint8_t invokeIdAndPriority,
+  const std::vector<std::uint8_t>& payload,
+  dlms::apdu::XdlmsApdu& response)
+{
+  std::vector<std::uint8_t> bytes;
+  bytes.reserve(payload.size() + 3u);
+  bytes.push_back(0xC7u);
+  bytes.push_back(0x01u);
+  bytes.push_back(invokeIdAndPriority);
+  bytes.insert(bytes.end(), payload.begin(), payload.end());
+
+  return dlms::apdu::DecodeXdlmsApdu(&bytes[0], bytes.size(), response) ==
+      dlms::apdu::ApduStatus::Ok
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::DecodeFailed;
 }
 
 } // namespace
@@ -384,7 +457,7 @@ XdlmsStatus XdlmsClient::Get(
         return XdlmsStatus::InvokeIdMismatch;
       }
 
-      status = blocks.AppendGetBlock(response.getResponseAny.dataBlock);
+      status = blocks.AppendBlock(response.getResponseAny.dataBlock);
       if (status != XdlmsStatus::Ok) {
         return status;
       }
@@ -585,6 +658,21 @@ XdlmsStatus XdlmsClient::Action(
   const std::vector<std::uint8_t>& encodedParameter,
   ActionResult& result)
 {
+  return Action(
+    descriptor,
+    hasParameter,
+    encodedParameter,
+    DefaultServiceOptions(),
+    result);
+}
+
+XdlmsStatus XdlmsClient::Action(
+  const CosemMethodDescriptor& descriptor,
+  bool hasParameter,
+  const std::vector<std::uint8_t>& encodedParameter,
+  const ServiceOptions& options,
+  ActionResult& result)
+{
   result = EmptyActionResult();
 
   XdlmsStatus status = ValidateMethodDescriptor(descriptor);
@@ -606,7 +694,7 @@ XdlmsStatus XdlmsClient::Action(
 
   const std::uint8_t invokeId = invokeIds_.Next();
   const std::uint8_t invokeIdAndPriority =
-    MakeInvokeIdAndPriority(invokeId, DefaultServiceOptions());
+    MakeInvokeIdAndPriority(invokeId, options);
 
   dlms::apdu::XdlmsApdu request;
   request.kind = dlms::apdu::XdlmsApduKind::ActionRequest;
@@ -618,7 +706,7 @@ XdlmsStatus XdlmsClient::Action(
 
   dlms::apdu::XdlmsApdu response;
   std::vector<std::uint8_t> decodedResponseBytes;
-  status = SendAndReceive(
+  status = ReceiveActionResponse(
     channel_,
     security_,
     request,
@@ -628,36 +716,64 @@ XdlmsStatus XdlmsClient::Action(
     return status;
   }
 
-  if (response.kind != dlms::apdu::XdlmsApduKind::ActionResponse) {
-    return XdlmsStatus::DecodeFailed;
-  }
-
   if (response.actionResponseAny.choice !=
       dlms::apdu::ActionResponseChoice::Normal) {
-    return response.actionResponseAny.choice ==
-        dlms::apdu::ActionResponseChoice::WithPblock
-      ? XdlmsStatus::BlockTransferRequired
-      : XdlmsStatus::UnsupportedFeature;
-  }
+    if (response.actionResponseAny.choice !=
+        dlms::apdu::ActionResponseChoice::WithPblock) {
+      return XdlmsStatus::UnsupportedFeature;
+    }
+    if (!options.allowBlockTransfer) {
+      return XdlmsStatus::BlockTransferRequired;
+    }
 
-  if ((response.actionResponseAny.invokeIdAndPriority & 0x0Fu) != invokeId) {
-    return XdlmsStatus::InvokeIdMismatch;
-  }
+    BlockTransferManager blocks(options.maxBlockTransferBytes);
+    for (;;) {
+      if ((response.actionResponseAny.invokeIdAndPriority & 0x0Fu) != invokeId) {
+        return XdlmsStatus::InvokeIdMismatch;
+      }
 
-  result.invokeId = invokeId;
-  result.actionResult = response.actionResponseAny.normal.result;
-  if (response.actionResponseAny.normal.hasReturnParameter) {
-    status = CopyEncodedData(
-      response.actionResponseAny.normal.returnParameter,
-      result);
-    if (status != XdlmsStatus::Ok) {
-      return status;
+      status = blocks.AppendBlock(response.actionResponseAny.dataBlock);
+      if (status != XdlmsStatus::Ok) {
+        return status;
+      }
+      if (response.actionResponseAny.dataBlock.lastBlock) {
+        response = dlms::apdu::XdlmsApdu();
+        status = DecodeActionBlockPayload(
+          invokeIdAndPriority,
+          blocks.Data(),
+          response);
+        if (status != XdlmsStatus::Ok) {
+          return status;
+        }
+        return CopyActionResponse(response.actionResponseAny, invokeId, result);
+      }
+
+      const std::uint32_t acknowledgedBlock =
+        response.actionResponseAny.dataBlock.blockNumber;
+      response = dlms::apdu::XdlmsApdu();
+      decodedResponseBytes.clear();
+      status = ReceiveActionResponse(
+        channel_,
+        security_,
+        MakeActionRequestNextPblock(invokeIdAndPriority, acknowledgedBlock),
+        decodedResponseBytes,
+        response);
+      if (status != XdlmsStatus::Ok) {
+        return status;
+      }
+      if (response.actionResponseAny.choice !=
+          dlms::apdu::ActionResponseChoice::WithPblock) {
+        return XdlmsStatus::DecodeFailed;
+      }
     }
   }
 
-  return result.actionResult == 0u
-    ? XdlmsStatus::Ok
-    : XdlmsStatus::ServiceRejected;
+  status = CopyActionResponse(response.actionResponseAny, invokeId, result);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+
+  return XdlmsStatus::Ok;
 }
 
 } // namespace xdlms

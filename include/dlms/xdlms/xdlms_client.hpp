@@ -48,6 +48,13 @@ public:
     const std::vector<std::uint8_t>& encodedParameter,
     ActionResult& result);
 
+  XdlmsStatus Action(
+    const CosemMethodDescriptor& descriptor,
+    bool hasParameter,
+    const std::vector<std::uint8_t>& encodedParameter,
+    const ServiceOptions& options,
+    ActionResult& result);
+
 private:
   XdlmsClient(const XdlmsClient&);
   XdlmsClient& operator=(const XdlmsClient&);
