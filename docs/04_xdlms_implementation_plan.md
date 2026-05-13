@@ -548,3 +548,50 @@ Commit message:
 ```text
 test: cover xdlms action request blocks
 ```
+
+## Phase 35. Server ACTION Request Block Documentation
+
+Deliverables:
+
+- server-side ACTION request block reassembly requirements
+- `XdlmsServerApduProcessor` state ownership contract
+- request block state architecture and sequence diagram
+- focused unit and root integration test plan
+
+Commit message:
+
+```text
+docs(xdlms): define server action request blocks
+```
+
+## Phase 36. Server ACTION Request Block Reassembly
+
+Deliverables:
+
+- processor-local ACTION request block state
+- `ACTION-REQUEST-WITH-FIRST-PBLOCK` handling
+- `ACTION-REQUEST-WITH-PBLOCK` handling
+- `ACTION-RESPONSE-NEXT-PBLOCK` acknowledgements
+- final dispatch through existing `DispatchAction`
+- focused server APDU tests
+
+Commit message:
+
+```text
+feat(xdlms): reassemble server action request blocks
+```
+
+## Phase 37. Root Integration Update
+
+Deliverables:
+
+- root submodule pointer update
+- root integration test for client ACTION request blocks reaching server APDU
+  processing
+- full root build and test run
+
+Commit message:
+
+```text
+test: cover server action request block integration
+```

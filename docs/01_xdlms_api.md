@@ -187,6 +187,10 @@ only when encoding succeeds. When constructed with a
 `dlms::security::CipheredApduProcessor`, the processor unprotects the request
 before xDLMS decode and protects the encoded response before returning it.
 
+The processor owns one server-side ACTION request block-transfer state. A
+single processor instance is therefore scoped to one association/session when
+ACTION request pblocks are enabled.
+
 Supported first APDU shape:
 
 - input: GET-REQUEST-NORMAL, no selective access;
@@ -203,7 +207,8 @@ Unsupported first APDU shapes:
 - SET-WITH-LIST;
 - SET-WITH-LIST-AND-FIRST-DATABLOCK;
 - selective access;
-- unsupported ACTION shapes;
+- unsupported ACTION shapes except documented single-method ACTION request
+  pblocks;
 - ciphered APDUs when the processor was not constructed with a security
   processor;
 - ACSE APDUs.

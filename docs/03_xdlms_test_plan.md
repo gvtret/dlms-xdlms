@@ -176,6 +176,25 @@ Request-side tests:
 
 ## 11. Verification Commands
 
+## 11. Server ACTION Request Block Tests
+
+Required server APDU tests:
+
+- normal ACTION request still dispatches unchanged;
+- first non-final pblock returns `ACTION-RESPONSE-NEXT-PBLOCK`;
+- final following pblock dispatches one `ActionIndication` with concatenated
+  encoded parameter bytes;
+- final first pblock dispatches immediately;
+- following pblock without active state maps to `DecodeFailed`;
+- skipped or duplicate block number maps to `DecodeFailed`;
+- invoke-id mismatch maps to `InvokeIdMismatch`;
+- accumulated size over `maxBlockTransferBytes` maps to `DecodeFailed`;
+- active state resets after final success and after decode failure;
+- secure APDU processor unprotects each request block and protects each ack or
+  final response.
+
+## 12. Verification Commands
+
 Use the existing workspace build directory when available:
 
 ```text
