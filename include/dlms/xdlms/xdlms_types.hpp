@@ -47,6 +47,8 @@ struct ServiceOptions
 {
   bool confirmed;
   bool highPriority;
+  bool allowBlockTransfer;
+  std::size_t maxBlockTransferBytes;
 };
 
 struct GetResult

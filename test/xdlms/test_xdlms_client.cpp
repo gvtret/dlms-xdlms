@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <deque>
 #include <vector>
 
 namespace {
@@ -47,6 +48,7 @@ public:
   {
     ++sendCalls;
     sent.assign(apdu.data, apdu.data + apdu.size);
+    sentHistory.push_back(sent);
     return sendStatus;
   }
 
@@ -54,7 +56,12 @@ public:
   {
     ++receiveCalls;
     if (receiveStatus == dlms::profile::ProfileStatus::Ok) {
-      apdu = nextReceive;
+      if (!receiveQueue.empty()) {
+        apdu = receiveQueue.front();
+        receiveQueue.pop_front();
+      } else {
+        apdu = nextReceive;
+      }
     }
     return receiveStatus;
   }
@@ -86,7 +93,9 @@ public:
   int sendCalls;
   int receiveCalls;
   std::vector<std::uint8_t> sent;
+  std::vector<std::vector<std::uint8_t> > sentHistory;
   std::vector<std::uint8_t> nextReceive;
+  std::deque<std::vector<std::uint8_t> > receiveQueue;
 };
 
 std::vector<std::uint8_t> MakeAareBytes()
@@ -168,17 +177,21 @@ std::vector<std::uint8_t> MakeAccessErrorResponse(
 }
 
 std::vector<std::uint8_t> MakeBlockResponse(
-  std::uint8_t invokeIdAndPriority)
+  std::uint8_t invokeIdAndPriority,
+  std::uint32_t blockNumber,
+  bool lastBlock,
+  const std::vector<std::uint8_t>& rawData)
 {
   dlms::apdu::XdlmsApdu response;
   response.kind = dlms::apdu::XdlmsApduKind::GetResponse;
   response.getResponseAny.choice =
     dlms::apdu::GetResponseChoice::WithDataBlock;
   response.getResponseAny.invokeIdAndPriority = invokeIdAndPriority;
-  response.getResponseAny.dataBlock.lastBlock = false;
-  response.getResponseAny.dataBlock.blockNumber = 1u;
-  response.getResponseAny.dataBlock.rawData.data = 0;
-  response.getResponseAny.dataBlock.rawData.size = 0;
+  response.getResponseAny.dataBlock.lastBlock = lastBlock;
+  response.getResponseAny.dataBlock.blockNumber = blockNumber;
+  response.getResponseAny.dataBlock.rawData.data =
+    rawData.empty() ? 0 : &rawData[0];
+  response.getResponseAny.dataBlock.rawData.size = rawData.size();
   return EncodeResponse(response);
 }
 
@@ -386,12 +399,74 @@ TEST(XdlmsClient, GetReportsBlockTransferRequired)
     channel,
     dlms::association::DefaultAssociationOptions());
   Establish(association, channel);
-  channel.nextReceive = MakeBlockResponse(0x81u);
+  channel.nextReceive =
+    MakeBlockResponse(0x81u, 1u, false, MakeLongUnsignedBytes(0x1111u));
+
+  dlms::xdlms::XdlmsClient client(channel, association);
+  dlms::xdlms::ServiceOptions options =
+    dlms::xdlms::DefaultServiceOptions();
+  options.allowBlockTransfer = false;
+  dlms::xdlms::GetResult result;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::BlockTransferRequired,
+            client.Get(MakeDescriptor(), options, result));
+}
+
+TEST(XdlmsClient, GetCollectsResponseDataBlocks)
+{
+  FakeApduChannel channel;
+  dlms::association::AssociationClient association(
+    channel,
+    dlms::association::DefaultAssociationOptions());
+  Establish(association, channel);
+  channel.receiveQueue.push_back(
+    MakeBlockResponse(0x81u, 1u, false, MakeLongUnsignedBytes(0x1111u)));
+  channel.receiveQueue.push_back(
+    MakeBlockResponse(0x81u, 2u, true, MakeLongUnsignedBytes(0x2222u)));
 
   dlms::xdlms::XdlmsClient client(channel, association);
   dlms::xdlms::GetResult result;
 
-  EXPECT_EQ(dlms::xdlms::XdlmsStatus::BlockTransferRequired,
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            client.Get(MakeDescriptor(), result));
+
+  EXPECT_EQ(3, channel.sendCalls);
+  ASSERT_EQ(3u, channel.sentHistory.size());
+  dlms::apdu::XdlmsApdu nextRequest;
+  ASSERT_EQ(dlms::apdu::ApduStatus::Ok,
+            dlms::apdu::DecodeXdlmsApdu(
+              &channel.sentHistory[2][0],
+              channel.sentHistory[2].size(),
+              nextRequest));
+  EXPECT_EQ(dlms::apdu::XdlmsApduKind::GetRequest, nextRequest.kind);
+  EXPECT_EQ(dlms::apdu::GetRequestChoice::Next,
+            nextRequest.getRequestAny.choice);
+  EXPECT_EQ(1u, nextRequest.getRequestAny.blockNumber);
+
+  EXPECT_EQ(1u, result.invokeId);
+  EXPECT_TRUE(result.hasData);
+  std::vector<std::uint8_t> expected = MakeLongUnsignedBytes(0x1111u);
+  const std::vector<std::uint8_t> second = MakeLongUnsignedBytes(0x2222u);
+  expected.insert(expected.end(), second.begin(), second.end());
+  EXPECT_EQ(expected, result.data);
+}
+
+TEST(XdlmsClient, GetRejectsOutOfOrderResponseDataBlocks)
+{
+  FakeApduChannel channel;
+  dlms::association::AssociationClient association(
+    channel,
+    dlms::association::DefaultAssociationOptions());
+  Establish(association, channel);
+  channel.receiveQueue.push_back(
+    MakeBlockResponse(0x81u, 1u, false, MakeLongUnsignedBytes(0x1111u)));
+  channel.receiveQueue.push_back(
+    MakeBlockResponse(0x81u, 3u, true, MakeLongUnsignedBytes(0x2222u)));
+
+  dlms::xdlms::XdlmsClient client(channel, association);
+  dlms::xdlms::GetResult result;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::DecodeFailed,
             client.Get(MakeDescriptor(), result));
 }
 

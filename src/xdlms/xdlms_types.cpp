@@ -61,6 +61,8 @@ ServiceOptions DefaultServiceOptions()
   ServiceOptions options;
   options.confirmed = true;
   options.highPriority = false;
+  options.allowBlockTransfer = true;
+  options.maxBlockTransferBytes = 65536u;
   return options;
 }
 

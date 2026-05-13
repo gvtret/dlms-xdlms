@@ -26,6 +26,11 @@ public:
     const CosemAttributeDescriptor& descriptor,
     GetResult& result);
 
+  XdlmsStatus Get(
+    const CosemAttributeDescriptor& descriptor,
+    const ServiceOptions& options,
+    GetResult& result);
+
   XdlmsStatus Set(
     const CosemAttributeDescriptor& descriptor,
     const std::vector<std::uint8_t>& encodedData,

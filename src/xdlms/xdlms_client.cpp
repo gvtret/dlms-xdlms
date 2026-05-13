@@ -117,8 +117,11 @@ XdlmsStatus SendAndReceive(
   dlms::profile::IApduChannel& channel,
   dlms::security::CipheredApduProcessor* security,
   const dlms::apdu::XdlmsApdu& request,
+  std::vector<std::uint8_t>& decodedResponseBytes,
   dlms::apdu::XdlmsApdu& response)
 {
+  decodedResponseBytes.clear();
+
   std::vector<std::uint8_t> encodedRequest;
   if (dlms::apdu::EncodeXdlmsApdu(request, encodedRequest) !=
       dlms::apdu::ApduStatus::Ok) {
@@ -159,10 +162,83 @@ XdlmsStatus SendAndReceive(
     }
   }
 
+  decodedResponseBytes = inboundResponse;
   return dlms::apdu::DecodeXdlmsApdu(
-      inboundResponse.empty() ? 0 : &inboundResponse[0],
-      inboundResponse.size(),
+      decodedResponseBytes.empty() ? 0 : &decodedResponseBytes[0],
+      decodedResponseBytes.size(),
       response) == dlms::apdu::ApduStatus::Ok
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::DecodeFailed;
+}
+
+class BlockTransferManager
+{
+public:
+  explicit BlockTransferManager(std::size_t maxBytes)
+    : maxBytes_(maxBytes)
+    , nextBlockNumber_(1u)
+  {
+  }
+
+  XdlmsStatus AppendGetBlock(const dlms::apdu::DataBlockG& block)
+  {
+    if (block.blockNumber != nextBlockNumber_) {
+      return XdlmsStatus::DecodeFailed;
+    }
+    if (block.rawData.size > maxBytes_ ||
+        data_.size() > maxBytes_ - block.rawData.size) {
+      return XdlmsStatus::DecodeFailed;
+    }
+    if (block.rawData.size != 0u && block.rawData.data == 0) {
+      return XdlmsStatus::DecodeFailed;
+    }
+
+    if (block.rawData.size != 0u) {
+      data_.insert(
+        data_.end(),
+        block.rawData.data,
+        block.rawData.data + block.rawData.size);
+    }
+    ++nextBlockNumber_;
+    return XdlmsStatus::Ok;
+  }
+
+  const std::vector<std::uint8_t>& Data() const
+  {
+    return data_;
+  }
+
+private:
+  std::size_t maxBytes_;
+  std::uint32_t nextBlockNumber_;
+  std::vector<std::uint8_t> data_;
+};
+
+dlms::apdu::XdlmsApdu MakeGetRequestNext(
+  std::uint8_t invokeIdAndPriority,
+  std::uint32_t blockNumber)
+{
+  dlms::apdu::XdlmsApdu request;
+  request.kind = dlms::apdu::XdlmsApduKind::GetRequest;
+  request.getRequestAny.choice = dlms::apdu::GetRequestChoice::Next;
+  request.getRequestAny.invokeIdAndPriority = invokeIdAndPriority;
+  request.getRequestAny.blockNumber = blockNumber;
+  return request;
+}
+
+XdlmsStatus ReceiveGetResponse(
+  dlms::profile::IApduChannel& channel,
+  dlms::security::CipheredApduProcessor* security,
+  const dlms::apdu::XdlmsApdu& request,
+  std::vector<std::uint8_t>& decodedResponseBytes,
+  dlms::apdu::XdlmsApdu& response)
+{
+  const XdlmsStatus status =
+    SendAndReceive(channel, security, request, decodedResponseBytes, response);
+  if (status != XdlmsStatus::Ok) {
+    return status;
+  }
+  return response.kind == dlms::apdu::XdlmsApduKind::GetResponse
     ? XdlmsStatus::Ok
     : XdlmsStatus::DecodeFailed;
 }
@@ -194,6 +270,14 @@ XdlmsStatus XdlmsClient::Get(
   const CosemAttributeDescriptor& descriptor,
   GetResult& result)
 {
+  return Get(descriptor, DefaultServiceOptions(), result);
+}
+
+XdlmsStatus XdlmsClient::Get(
+  const CosemAttributeDescriptor& descriptor,
+  const ServiceOptions& options,
+  GetResult& result)
+{
   result = EmptyGetResult();
 
   XdlmsStatus status = ValidateDescriptor(descriptor);
@@ -207,7 +291,7 @@ XdlmsStatus XdlmsClient::Get(
 
   const std::uint8_t invokeId = invokeIds_.Next();
   const std::uint8_t invokeIdAndPriority =
-    MakeInvokeIdAndPriority(invokeId, DefaultServiceOptions());
+    MakeInvokeIdAndPriority(invokeId, options);
 
   dlms::apdu::XdlmsApdu request = dlms::apdu::MakeGetRequestNormal(
     invokeIdAndPriority,
@@ -215,21 +299,62 @@ XdlmsStatus XdlmsClient::Get(
     ToApduLogicalName(descriptor.instanceId),
     descriptor.attributeId);
 
+  std::vector<std::uint8_t> decodedResponseBytes;
   dlms::apdu::XdlmsApdu response;
-  status = SendAndReceive(channel_, security_, request, response);
+  status = ReceiveGetResponse(
+    channel_,
+    security_,
+    request,
+    decodedResponseBytes,
+    response);
   if (status != XdlmsStatus::Ok) {
     return status;
   }
 
-  if (response.kind != dlms::apdu::XdlmsApduKind::GetResponse) {
-    return XdlmsStatus::DecodeFailed;
-  }
-
   if (response.getResponseAny.choice != dlms::apdu::GetResponseChoice::Normal) {
-    return response.getResponseAny.choice ==
-        dlms::apdu::GetResponseChoice::WithDataBlock
-      ? XdlmsStatus::BlockTransferRequired
-      : XdlmsStatus::UnsupportedFeature;
+    if (response.getResponseAny.choice !=
+        dlms::apdu::GetResponseChoice::WithDataBlock) {
+      return XdlmsStatus::UnsupportedFeature;
+    }
+    if (!options.allowBlockTransfer) {
+      return XdlmsStatus::BlockTransferRequired;
+    }
+
+    BlockTransferManager blocks(options.maxBlockTransferBytes);
+    for (;;) {
+      if ((response.getResponseAny.invokeIdAndPriority & 0x0Fu) != invokeId) {
+        return XdlmsStatus::InvokeIdMismatch;
+      }
+
+      status = blocks.AppendGetBlock(response.getResponseAny.dataBlock);
+      if (status != XdlmsStatus::Ok) {
+        return status;
+      }
+      if (response.getResponseAny.dataBlock.lastBlock) {
+        result.invokeId = invokeId;
+        result.data = blocks.Data();
+        result.hasData = true;
+        return XdlmsStatus::Ok;
+      }
+
+      const std::uint32_t acknowledgedBlock =
+        response.getResponseAny.dataBlock.blockNumber;
+      response = dlms::apdu::XdlmsApdu();
+      decodedResponseBytes.clear();
+      status = ReceiveGetResponse(
+        channel_,
+        security_,
+        MakeGetRequestNext(invokeIdAndPriority, acknowledgedBlock),
+        decodedResponseBytes,
+        response);
+      if (status != XdlmsStatus::Ok) {
+        return status;
+      }
+      if (response.getResponseAny.choice !=
+          dlms::apdu::GetResponseChoice::WithDataBlock) {
+        return XdlmsStatus::DecodeFailed;
+      }
+    }
   }
 
   if ((response.getResponse.invokeIdAndPriority & 0x0Fu) != invokeId) {
@@ -282,7 +407,13 @@ XdlmsStatus XdlmsClient::Set(
   request.setRequestAny.data = data;
 
   dlms::apdu::XdlmsApdu response;
-  status = SendAndReceive(channel_, security_, request, response);
+  std::vector<std::uint8_t> decodedResponseBytes;
+  status = SendAndReceive(
+    channel_,
+    security_,
+    request,
+    decodedResponseBytes,
+    response);
   if (status != XdlmsStatus::Ok) {
     return status;
   }
@@ -347,7 +478,13 @@ XdlmsStatus XdlmsClient::Action(
   request.actionRequestAny.normal.invocationParameter = parameter;
 
   dlms::apdu::XdlmsApdu response;
-  status = SendAndReceive(channel_, security_, request, response);
+  std::vector<std::uint8_t> decodedResponseBytes;
+  status = SendAndReceive(
+    channel_,
+    security_,
+    request,
+    decodedResponseBytes,
+    response);
   if (status != XdlmsStatus::Ok) {
     return status;
   }
