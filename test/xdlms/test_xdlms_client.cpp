@@ -282,6 +282,19 @@ std::vector<std::uint8_t> MakeActionBlockResponse(
   return EncodeResponse(response);
 }
 
+std::vector<std::uint8_t> MakeActionNextPblockResponse(
+  std::uint8_t invokeIdAndPriority,
+  std::uint32_t blockNumber)
+{
+  dlms::apdu::XdlmsApdu response;
+  response.kind = dlms::apdu::XdlmsApduKind::ActionResponse;
+  response.actionResponseAny.choice =
+    dlms::apdu::ActionResponseChoice::NextPblock;
+  response.actionResponseAny.invokeIdAndPriority = invokeIdAndPriority;
+  response.actionResponseAny.blockNumber = blockNumber;
+  return EncodeResponse(response);
+}
+
 std::vector<std::uint8_t> MakeActionPayload(
   std::uint8_t result,
   const std::vector<std::uint8_t>& encodedData)
@@ -942,6 +955,187 @@ TEST(XdlmsClient, ActionRejectsOutOfOrderResponsePblocks)
               MakeMethodDescriptor(),
               false,
               std::vector<std::uint8_t>(),
+              result));
+}
+
+TEST(XdlmsClient, ActionSendsRequestPblocks)
+{
+  FakeApduChannel channel;
+  dlms::association::AssociationClient association(
+    channel,
+    dlms::association::DefaultAssociationOptions());
+  Establish(association, channel);
+  channel.receiveQueue.push_back(MakeActionNextPblockResponse(0x81u, 1u));
+  channel.receiveQueue.push_back(MakeActionResponse(0x81u, 0u, true));
+
+  dlms::xdlms::ServiceOptions options =
+    dlms::xdlms::DefaultServiceOptions();
+  options.maxActionBlockPayloadBytes = 2u;
+
+  dlms::xdlms::XdlmsClient client(channel, association);
+  dlms::xdlms::ActionResult result;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            client.Action(
+              MakeMethodDescriptor(),
+              true,
+              MakeLongUnsignedBytes(0x4321u),
+              options,
+              result));
+
+  ASSERT_EQ(3u, channel.sentHistory.size());
+  dlms::apdu::XdlmsApdu firstBlock;
+  ASSERT_EQ(dlms::apdu::ApduStatus::Ok,
+            dlms::apdu::DecodeXdlmsApdu(
+              &channel.sentHistory[1][0],
+              channel.sentHistory[1].size(),
+              firstBlock));
+  EXPECT_EQ(dlms::apdu::ActionRequestChoice::WithFirstPblock,
+            firstBlock.actionRequestAny.choice);
+  EXPECT_EQ(7u, firstBlock.actionRequestAny.normal.descriptor.classId);
+  EXPECT_EQ(1u, firstBlock.actionRequestAny.normal.descriptor.methodId);
+  EXPECT_FALSE(firstBlock.actionRequestAny.dataBlock.lastBlock);
+  EXPECT_EQ(1u, firstBlock.actionRequestAny.dataBlock.blockNumber);
+  EXPECT_EQ(2u, firstBlock.actionRequestAny.dataBlock.rawData.size);
+  EXPECT_EQ(0x12u, firstBlock.actionRequestAny.dataBlock.rawData.data[0]);
+  EXPECT_EQ(0x43u, firstBlock.actionRequestAny.dataBlock.rawData.data[1]);
+
+  dlms::apdu::XdlmsApdu finalBlock;
+  ASSERT_EQ(dlms::apdu::ApduStatus::Ok,
+            dlms::apdu::DecodeXdlmsApdu(
+              &channel.sentHistory[2][0],
+              channel.sentHistory[2].size(),
+              finalBlock));
+  EXPECT_EQ(dlms::apdu::ActionRequestChoice::WithPblock,
+            finalBlock.actionRequestAny.choice);
+  EXPECT_TRUE(finalBlock.actionRequestAny.dataBlock.lastBlock);
+  EXPECT_EQ(2u, finalBlock.actionRequestAny.dataBlock.blockNumber);
+  ASSERT_EQ(1u, finalBlock.actionRequestAny.dataBlock.rawData.size);
+  EXPECT_EQ(0x21u, finalBlock.actionRequestAny.dataBlock.rawData.data[0]);
+
+  EXPECT_EQ(1u, result.invokeId);
+  EXPECT_EQ(0u, result.actionResult);
+  EXPECT_TRUE(result.hasData);
+  EXPECT_EQ(MakeLongUnsignedBytes(0x2468u), result.data);
+}
+
+TEST(XdlmsClient, ActionRequestBlocksCanFinishWithResponsePblocks)
+{
+  FakeApduChannel channel;
+  dlms::association::AssociationClient association(
+    channel,
+    dlms::association::DefaultAssociationOptions());
+  Establish(association, channel);
+
+  const std::vector<std::uint8_t> payload =
+    MakeActionPayload(0u, MakeLongUnsignedBytes(0x2468u));
+  channel.receiveQueue.push_back(MakeActionNextPblockResponse(0x81u, 1u));
+  channel.receiveQueue.push_back(
+    MakeActionBlockResponse(
+      0x81u,
+      1u,
+      true,
+      payload));
+
+  dlms::xdlms::ServiceOptions options =
+    dlms::xdlms::DefaultServiceOptions();
+  options.maxActionBlockPayloadBytes = 2u;
+
+  dlms::xdlms::XdlmsClient client(channel, association);
+  dlms::xdlms::ActionResult result;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            client.Action(
+              MakeMethodDescriptor(),
+              true,
+              MakeLongUnsignedBytes(0x4321u),
+              options,
+              result));
+  EXPECT_EQ(MakeLongUnsignedBytes(0x2468u), result.data);
+}
+
+TEST(XdlmsClient, ActionRejectsRequestBlockAckMismatch)
+{
+  FakeApduChannel channel;
+  dlms::association::AssociationClient association(
+    channel,
+    dlms::association::DefaultAssociationOptions());
+  Establish(association, channel);
+  channel.receiveQueue.push_back(MakeActionNextPblockResponse(0x81u, 2u));
+
+  dlms::xdlms::ServiceOptions options =
+    dlms::xdlms::DefaultServiceOptions();
+  options.maxActionBlockPayloadBytes = 2u;
+
+  dlms::xdlms::XdlmsClient client(channel, association);
+  dlms::xdlms::ActionResult result;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::DecodeFailed,
+            client.Action(
+              MakeMethodDescriptor(),
+              true,
+              MakeLongUnsignedBytes(0x4321u),
+              options,
+              result));
+}
+
+TEST(XdlmsClient, ActionRejectsRequestBlockInvokeMismatch)
+{
+  FakeApduChannel channel;
+  dlms::association::AssociationClient association(
+    channel,
+    dlms::association::DefaultAssociationOptions());
+  Establish(association, channel);
+  channel.receiveQueue.push_back(MakeActionNextPblockResponse(0x82u, 1u));
+
+  dlms::xdlms::ServiceOptions options =
+    dlms::xdlms::DefaultServiceOptions();
+  options.maxActionBlockPayloadBytes = 2u;
+
+  dlms::xdlms::XdlmsClient client(channel, association);
+  dlms::xdlms::ActionResult result;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::InvokeIdMismatch,
+            client.Action(
+              MakeMethodDescriptor(),
+              true,
+              MakeLongUnsignedBytes(0x4321u),
+              options,
+              result));
+}
+
+TEST(XdlmsClient, ActionRequestBlocksRespectOptions)
+{
+  FakeApduChannel channel;
+  dlms::association::AssociationClient association(
+    channel,
+    dlms::association::DefaultAssociationOptions());
+  Establish(association, channel);
+
+  dlms::xdlms::ServiceOptions options =
+    dlms::xdlms::DefaultServiceOptions();
+  options.allowBlockTransfer = false;
+  options.maxActionBlockPayloadBytes = 2u;
+
+  dlms::xdlms::XdlmsClient client(channel, association);
+  dlms::xdlms::ActionResult result;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::BlockTransferRequired,
+            client.Action(
+              MakeMethodDescriptor(),
+              true,
+              MakeLongUnsignedBytes(0x4321u),
+              options,
+              result));
+
+  options.allowBlockTransfer = true;
+  options.maxActionBlockPayloadBytes = 0u;
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::InvalidArgument,
+            client.Action(
+              MakeMethodDescriptor(),
+              true,
+              MakeLongUnsignedBytes(0x4321u),
+              options,
               result));
 }
 

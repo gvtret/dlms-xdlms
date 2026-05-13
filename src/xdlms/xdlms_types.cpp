@@ -64,6 +64,7 @@ ServiceOptions DefaultServiceOptions()
   options.allowBlockTransfer = true;
   options.maxBlockTransferBytes = 65536u;
   options.maxSetBlockPayloadBytes = 1024u;
+  options.maxActionBlockPayloadBytes = 1024u;
   return options;
 }
 

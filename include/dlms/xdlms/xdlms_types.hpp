@@ -50,6 +50,7 @@ struct ServiceOptions
   bool allowBlockTransfer;
   std::size_t maxBlockTransferBytes;
   std::size_t maxSetBlockPayloadBytes;
+  std::size_t maxActionBlockPayloadBytes;
 };
 
 struct GetResult
