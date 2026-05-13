@@ -224,6 +224,23 @@ Rules:
 SET and ACTION block transfer remain separate phases because their service
 sequences and APDU shapes differ from GET response block transfer.
 
+The next SET block-transfer increment shall implement client-side
+service-specific long SET for one attribute.
+
+Rules:
+
+- normal one-APDU SET keeps the current behavior;
+- blocked SET is opt-in through service options;
+- the first request uses `SET-REQUEST-WITH-FIRST-DATABLOCK`;
+- following requests use `SET-REQUEST-WITH-DATABLOCK`;
+- all blocks reuse the same invoke-id-and-priority byte;
+- non-final server responses must acknowledge the latest sent block number;
+- the final response carries the complete SET access result;
+- response invoke-id mismatch maps to `InvokeIdMismatch`;
+- block-number mismatch or unsupported block response shape maps to
+  `DecodeFailed`;
+- security protect/unprotect applies to every block request and response.
+
 ## 11. Out of Scope
 
 - association opening and release;
@@ -234,7 +251,8 @@ sequences and APDU shapes differ from GET response block transfer.
 - COSEM object access implementation inside `dlms-xdlms`;
 - GET-WITH-LIST;
 - server-side GET block production;
-- SET and ACTION block transfer;
+- server-side SET block reassembly;
+- ACTION block transfer;
 - selective access parameters;
 - COSEM object registry and access-right decisions;
 - public facade connection options.

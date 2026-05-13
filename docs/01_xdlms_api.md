@@ -48,6 +48,7 @@ No C ABI is planned for the first implementation.
 - `highPriority`
 - `allowBlockTransfer`
 - `maxBlockTransferBytes`
+- `maxSetBlockPayloadBytes`
 
 The default is confirmed normal priority.
 Block transfer is enabled by default with a finite maximum collected payload
@@ -219,6 +220,23 @@ responses internally when `ServiceOptions::allowBlockTransfer` is enabled.
 Unsupported block-transfer forms still return `BlockTransferRequired`.
 Malformed or out-of-order block sequences return `DecodeFailed`.
 
+`XdlmsClient::Set()` owns the next client-side block transfer increment. The
+default overload keeps the existing signature. An options-aware overload allows
+callers to disable block transfer or choose a smaller SET block payload:
+
+```cpp
+dlms::xdlms::SetResult result;
+dlms::xdlms::ServiceOptions options = dlms::xdlms::DefaultServiceOptions();
+options.maxSetBlockPayloadBytes = 128;
+
+const dlms::xdlms::XdlmsStatus status =
+  client.Set(descriptor, encodedData, options, result);
+```
+
+Blocked SET sends `SET-REQUEST-WITH-FIRST-DATABLOCK` followed by
+`SET-REQUEST-WITH-DATABLOCK` requests. The final response is
+`SET-RESPONSE-LAST-DATABLOCK`.
+
 ## 8. Module Diagram
 
 ```mermaid
@@ -226,6 +244,7 @@ classDiagram
   class XdlmsClient {
     +Get(CosemAttributeDescriptor, GetResult&) XdlmsStatus
     +Set(CosemAttributeDescriptor, vector~uint8_t~, SetResult&) XdlmsStatus
+    +Set(CosemAttributeDescriptor, vector~uint8_t~, ServiceOptions, SetResult&) XdlmsStatus
     +Action(CosemMethodDescriptor, vector~uint8_t~, ActionResult&) XdlmsStatus
   }
 
@@ -236,6 +255,12 @@ classDiagram
   class BlockTransferManager {
     +AppendGetBlock() XdlmsStatus
     +Data() vector~uint8_t~
+  }
+
+  class SetBlockTransferSender {
+    +BuildFirstBlock() XdlmsApdu
+    +BuildNextBlock() XdlmsApdu
+    +ValidateAck() XdlmsStatus
   }
 
   class CosemAttributeDescriptor {
@@ -284,6 +309,7 @@ classDiagram
 
   XdlmsClient --> InvokeIdAllocator
   XdlmsClient --> BlockTransferManager
+  XdlmsClient --> SetBlockTransferSender
   XdlmsClient --> CosemAttributeDescriptor
   XdlmsClient --> GetResult
   GetIndication --> ServiceOptions

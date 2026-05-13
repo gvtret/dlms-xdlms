@@ -251,7 +251,28 @@ The block manager is scoped to one synchronous GET call. It validates block
 numbers, enforces the collected-size limit, and returns the final raw-data
 bytes to the existing `GetResult` contract.
 
-## 10. Ownership
+## 10. Client SET Block Transfer
+
+```mermaid
+sequenceDiagram
+  participant App as Caller
+  participant Client as XdlmsClient
+  participant Channel as IApduChannel
+
+  App->>Client: Set(descriptor, encodedData, options)
+  Client->>Channel: SET-REQUEST-WITH-FIRST-DATABLOCK block 1
+  Channel-->>Client: SET-RESPONSE-DATABLOCK block 1
+  Client->>Channel: SET-REQUEST-WITH-DATABLOCK block 2, last=true
+  Channel-->>Client: SET-RESPONSE-LAST-DATABLOCK block 2, result=success
+  Client-->>App: SetResult
+```
+
+The SET block sender is scoped to one synchronous SET call. It reuses the same
+invoke-id-and-priority byte for all blocks, validates acknowledged block
+numbers, and returns the final data-access-result through the existing
+`SetResult` contract.
+
+## 11. Ownership
 
 `XdlmsClient` stores non-owning references to the association and profile APDU
 channel boundaries and may store a non-owning reference to a security
@@ -261,7 +282,7 @@ reference. The layer does not own transport resources, association lifetime,
 security material, COSEM object storage, or block-transfer persistence outside
 one service call.
 
-## 11. Error Model
+## 12. Error Model
 
 The layer returns status codes only. Runtime API paths do not throw exceptions.
 Failures are reported at the xDLMS service boundary and do not close or release

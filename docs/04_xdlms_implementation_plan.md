@@ -412,3 +412,47 @@ Commit message:
 ```text
 test: cover xdlms get block transfer
 ```
+
+## Phase 26. SET Block Transfer Documentation
+
+Deliverables:
+
+- client SET block-transfer requirements
+- API contract for SET block service options
+- architecture and sequence diagrams
+- focused unit and root test plan
+
+Commit message:
+
+```text
+docs(xdlms): define set block transfer
+```
+
+## Phase 27. Client SET Block Transfer
+
+Deliverables:
+
+- options-aware `XdlmsClient::Set` overload
+- SET first-block and following-block request generation
+- ACK and final-response validation
+- focused unit tests, including error mappings
+
+Commit message:
+
+```text
+feat(xdlms): send set request blocks
+```
+
+## Phase 28. Root Integration Update
+
+Deliverables:
+
+- root submodule pointer update
+- root integration test for multi-block SET over a fake APDU channel
+- full root build and test run
+
+Commit message:
+
+```text
+test: cover xdlms set block transfer
+```

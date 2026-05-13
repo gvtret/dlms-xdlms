@@ -130,7 +130,22 @@ Required client tests:
 - secure client protects every `GET-REQUEST-NEXT` and unprotects every
   datablock response.
 
-## 9. Verification Commands
+## 9. Client SET Block Transfer Tests
+
+Required client tests:
+
+- normal SET response still uses the existing single-APDU path;
+- blocked SET sends first and final blocks with the same invoke id and
+  priority;
+- non-final ACK block number must match the just-sent block;
+- final last-datablock response fills `SetResult`;
+- final non-zero access result maps to `ServiceRejected`;
+- disabled block transfer maps oversized SET data to `BlockTransferRequired`;
+- send and receive failures during any block map to existing statuses;
+- secure client protects every SET block request and unprotects every SET block
+  response.
+
+## 10. Verification Commands
 
 Use the existing workspace build directory when available:
 
