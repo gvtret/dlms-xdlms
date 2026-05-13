@@ -27,7 +27,7 @@ std::uint8_t MakeInvokeIdAndPriority(
 
 ServiceOptions ParseServiceOptions(std::uint8_t invokeIdAndPriority)
 {
-  ServiceOptions options;
+  ServiceOptions options = DefaultServiceOptions();
   options.confirmed = (invokeIdAndPriority & 0x80u) != 0u;
   options.highPriority = (invokeIdAndPriority & 0x40u) != 0u;
   return options;
@@ -95,6 +95,23 @@ XdlmsStatus EncodeDataBytes(
 
   output.assign(buffer.begin(), buffer.begin() + writer.WrittenSize());
   return XdlmsStatus::Ok;
+}
+
+XdlmsStatus ValidateEncodedActionParameter(
+  const std::vector<std::uint8_t>& encodedData)
+{
+  if (encodedData.empty()) {
+    return XdlmsStatus::DecodeFailed;
+  }
+
+  dlms::apdu::DlmsData data;
+  return dlms::apdu::DecodeDlmsData(
+      &encodedData[0],
+      encodedData.size(),
+      8,
+      data) == dlms::apdu::ApduStatus::Ok
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::DecodeFailed;
 }
 
 XdlmsStatus EncodeGetResponse(
@@ -188,6 +205,24 @@ XdlmsStatus EncodeActionResponse(
     : XdlmsStatus::EncodeFailed;
 }
 
+XdlmsStatus EncodeActionNextPblockResponse(
+  std::uint8_t invokeIdAndPriority,
+  std::uint32_t blockNumber,
+  std::vector<std::uint8_t>& responseApdu)
+{
+  dlms::apdu::XdlmsApdu response;
+  response.kind = dlms::apdu::XdlmsApduKind::ActionResponse;
+  response.actionResponseAny.choice =
+    dlms::apdu::ActionResponseChoice::NextPblock;
+  response.actionResponseAny.invokeIdAndPriority = invokeIdAndPriority;
+  response.actionResponseAny.blockNumber = blockNumber;
+
+  return dlms::apdu::EncodeXdlmsApdu(response, responseApdu) ==
+      dlms::apdu::ApduStatus::Ok
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::EncodeFailed;
+}
+
 XdlmsStatus ProcessGetRequest(
   const dlms::apdu::XdlmsApdu& request,
   XdlmsServerDispatcher& dispatcher,
@@ -266,8 +301,154 @@ XdlmsStatus ProcessSetRequest(
 XdlmsStatus ProcessActionRequest(
   const dlms::apdu::XdlmsApdu& request,
   XdlmsServerDispatcher& dispatcher,
+  ActionRequestBlockState& actionBlocks,
   std::vector<std::uint8_t>& responseApdu)
 {
+  if (request.actionRequestAny.choice ==
+      dlms::apdu::ActionRequestChoice::WithFirstPblock) {
+    if (actionBlocks.active) {
+      actionBlocks = EmptyActionRequestBlockState();
+      return XdlmsStatus::DecodeFailed;
+    }
+    if (request.actionRequestAny.dataBlock.blockNumber != 1u) {
+      return XdlmsStatus::DecodeFailed;
+    }
+
+    const std::uint8_t invokeId = static_cast<std::uint8_t>(
+      request.actionRequestAny.invokeIdAndPriority & 0x0Fu);
+    const ServiceOptions options =
+      ParseServiceOptions(request.actionRequestAny.invokeIdAndPriority);
+    if (!options.confirmed) {
+      return XdlmsStatus::UnsupportedFeature;
+    }
+
+    if (request.actionRequestAny.dataBlock.rawData.size >
+        options.maxBlockTransferBytes) {
+      return XdlmsStatus::DecodeFailed;
+    }
+    if (request.actionRequestAny.dataBlock.rawData.size != 0u &&
+        request.actionRequestAny.dataBlock.rawData.data == 0) {
+      return XdlmsStatus::DecodeFailed;
+    }
+
+    std::vector<std::uint8_t> data;
+    if (request.actionRequestAny.dataBlock.rawData.size != 0u) {
+      data.assign(
+        request.actionRequestAny.dataBlock.rawData.data,
+        request.actionRequestAny.dataBlock.rawData.data +
+          request.actionRequestAny.dataBlock.rawData.size);
+    }
+
+    if (!request.actionRequestAny.dataBlock.lastBlock) {
+      actionBlocks.active = true;
+      actionBlocks.invokeId = invokeId;
+      actionBlocks.options = options;
+      actionBlocks.descriptor =
+        ToXdlmsDescriptor(request.actionRequestAny.normal.descriptor);
+      actionBlocks.nextBlockNumber = 2u;
+      actionBlocks.data = data;
+      return EncodeActionNextPblockResponse(
+        request.actionRequestAny.invokeIdAndPriority,
+        1u,
+        responseApdu);
+    }
+
+    XdlmsStatus status = ValidateEncodedActionParameter(data);
+    if (status != XdlmsStatus::Ok) {
+      return status;
+    }
+
+    ActionIndication indication = EmptyActionIndication();
+    indication.invokeId = invokeId;
+    indication.options = options;
+    indication.descriptor =
+      ToXdlmsDescriptor(request.actionRequestAny.normal.descriptor);
+    indication.hasParameter = true;
+    indication.parameter = data;
+
+    ActionResult result = EmptyActionResult();
+    status = dispatcher.DispatchAction(indication, result);
+    if (status != XdlmsStatus::Ok) {
+      return status;
+    }
+
+    const std::uint8_t responseInvokeIdAndPriority =
+      MakeInvokeIdAndPriority(indication.invokeId, indication.options);
+    return EncodeActionResponse(responseInvokeIdAndPriority, result, responseApdu);
+  }
+
+  if (request.actionRequestAny.choice ==
+      dlms::apdu::ActionRequestChoice::WithPblock) {
+    if (!actionBlocks.active) {
+      return XdlmsStatus::DecodeFailed;
+    }
+    if ((request.actionRequestAny.invokeIdAndPriority & 0x0Fu) !=
+        actionBlocks.invokeId) {
+      actionBlocks = EmptyActionRequestBlockState();
+      return XdlmsStatus::InvokeIdMismatch;
+    }
+    if (request.actionRequestAny.dataBlock.blockNumber !=
+        actionBlocks.nextBlockNumber) {
+      actionBlocks = EmptyActionRequestBlockState();
+      return XdlmsStatus::DecodeFailed;
+    }
+    if (request.actionRequestAny.dataBlock.rawData.size >
+          actionBlocks.options.maxBlockTransferBytes ||
+        actionBlocks.data.size() >
+          actionBlocks.options.maxBlockTransferBytes -
+          request.actionRequestAny.dataBlock.rawData.size) {
+      actionBlocks = EmptyActionRequestBlockState();
+      return XdlmsStatus::DecodeFailed;
+    }
+    if (request.actionRequestAny.dataBlock.rawData.size != 0u &&
+        request.actionRequestAny.dataBlock.rawData.data == 0) {
+      actionBlocks = EmptyActionRequestBlockState();
+      return XdlmsStatus::DecodeFailed;
+    }
+
+    if (request.actionRequestAny.dataBlock.rawData.size != 0u) {
+      actionBlocks.data.insert(
+        actionBlocks.data.end(),
+        request.actionRequestAny.dataBlock.rawData.data,
+        request.actionRequestAny.dataBlock.rawData.data +
+          request.actionRequestAny.dataBlock.rawData.size);
+    }
+
+    const std::uint32_t acceptedBlock =
+      request.actionRequestAny.dataBlock.blockNumber;
+    if (!request.actionRequestAny.dataBlock.lastBlock) {
+      ++actionBlocks.nextBlockNumber;
+      return EncodeActionNextPblockResponse(
+        request.actionRequestAny.invokeIdAndPriority,
+        acceptedBlock,
+        responseApdu);
+    }
+
+    ActionIndication indication = EmptyActionIndication();
+    indication.invokeId = actionBlocks.invokeId;
+    indication.options = actionBlocks.options;
+    indication.descriptor = actionBlocks.descriptor;
+    indication.hasParameter = true;
+    indication.parameter = actionBlocks.data;
+    actionBlocks = EmptyActionRequestBlockState();
+
+    XdlmsStatus status =
+      ValidateEncodedActionParameter(indication.parameter);
+    if (status != XdlmsStatus::Ok) {
+      return status;
+    }
+
+    ActionResult result = EmptyActionResult();
+    status = dispatcher.DispatchAction(indication, result);
+    if (status != XdlmsStatus::Ok) {
+      return status;
+    }
+
+    const std::uint8_t responseInvokeIdAndPriority =
+      MakeInvokeIdAndPriority(indication.invokeId, indication.options);
+    return EncodeActionResponse(responseInvokeIdAndPriority, result, responseApdu);
+  }
+
   if (request.actionRequestAny.choice !=
       dlms::apdu::ActionRequestChoice::Normal) {
     return XdlmsStatus::UnsupportedFeature;
@@ -424,6 +605,7 @@ XdlmsServerApduProcessor::XdlmsServerApduProcessor(
   XdlmsServerDispatcher& dispatcher)
   : dispatcher_(dispatcher)
   , security_(0)
+  , actionBlocks_(EmptyActionRequestBlockState())
 {
 }
 
@@ -432,6 +614,7 @@ XdlmsServerApduProcessor::XdlmsServerApduProcessor(
   dlms::security::CipheredApduProcessor& security)
   : dispatcher_(dispatcher)
   , security_(&security)
+  , actionBlocks_(EmptyActionRequestBlockState())
 {
 }
 
@@ -471,7 +654,11 @@ XdlmsStatus XdlmsServerApduProcessor::ProcessRequest(
       break;
 
     case dlms::apdu::XdlmsApduKind::ActionRequest:
-      status = ProcessActionRequest(request, dispatcher_, responseApdu);
+      status = ProcessActionRequest(
+        request,
+        dispatcher_,
+        actionBlocks_,
+        responseApdu);
       break;
 
     default:
@@ -523,6 +710,18 @@ ActionIndication EmptyActionIndication()
   indication.hasParameter = false;
   indication.parameter.clear();
   return indication;
+}
+
+ActionRequestBlockState EmptyActionRequestBlockState()
+{
+  ActionRequestBlockState state;
+  state.active = false;
+  state.invokeId = 0u;
+  state.options = DefaultServiceOptions();
+  state.descriptor = EmptyCosemMethodDescriptor();
+  state.nextBlockNumber = 1u;
+  state.data.clear();
+  return state;
 }
 
 XdlmsStatus ValidateInvokeId(std::uint8_t invokeId)
