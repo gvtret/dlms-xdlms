@@ -36,6 +36,12 @@ public:
     const std::vector<std::uint8_t>& encodedData,
     SetResult& result);
 
+  XdlmsStatus Set(
+    const CosemAttributeDescriptor& descriptor,
+    const std::vector<std::uint8_t>& encodedData,
+    const ServiceOptions& options,
+    SetResult& result);
+
   XdlmsStatus Action(
     const CosemMethodDescriptor& descriptor,
     bool hasParameter,

@@ -218,6 +218,33 @@ std::vector<std::uint8_t> MakeSetBlockResponse(
   return EncodeResponse(response);
 }
 
+std::vector<std::uint8_t> MakeSetAckBlockResponse(
+  std::uint8_t invokeIdAndPriority,
+  std::uint32_t blockNumber)
+{
+  dlms::apdu::XdlmsApdu response;
+  response.kind = dlms::apdu::XdlmsApduKind::SetResponse;
+  response.setResponseAny.choice = dlms::apdu::SetResponseChoice::DataBlock;
+  response.setResponseAny.invokeIdAndPriority = invokeIdAndPriority;
+  response.setResponseAny.blockNumber = blockNumber;
+  return EncodeResponse(response);
+}
+
+std::vector<std::uint8_t> MakeSetLastBlockResponse(
+  std::uint8_t invokeIdAndPriority,
+  std::uint32_t blockNumber,
+  std::uint8_t result)
+{
+  dlms::apdu::XdlmsApdu response;
+  response.kind = dlms::apdu::XdlmsApduKind::SetResponse;
+  response.setResponseAny.choice =
+    dlms::apdu::SetResponseChoice::LastDataBlock;
+  response.setResponseAny.invokeIdAndPriority = invokeIdAndPriority;
+  response.setResponseAny.blockNumber = blockNumber;
+  response.setResponseAny.result = result;
+  return EncodeResponse(response);
+}
+
 std::vector<std::uint8_t> MakeActionResponse(
   std::uint8_t invokeIdAndPriority,
   std::uint8_t result,
@@ -500,6 +527,110 @@ TEST(XdlmsClient, SetSendsNormalRequestAndCopiesResult)
   EXPECT_EQ(0x4321u, request.setRequestAny.data.unsignedValue);
   EXPECT_EQ(1u, result.invokeId);
   EXPECT_EQ(0u, result.accessResult);
+}
+
+TEST(XdlmsClient, SetSendsRequestDataBlocks)
+{
+  FakeApduChannel channel;
+  dlms::association::AssociationClient association(
+    channel,
+    dlms::association::DefaultAssociationOptions());
+  Establish(association, channel);
+  channel.receiveQueue.push_back(MakeSetAckBlockResponse(0x81u, 1u));
+  channel.receiveQueue.push_back(MakeSetLastBlockResponse(0x81u, 2u, 0u));
+
+  dlms::xdlms::ServiceOptions options =
+    dlms::xdlms::DefaultServiceOptions();
+  options.maxSetBlockPayloadBytes = 2u;
+
+  dlms::xdlms::XdlmsClient client(channel, association);
+  dlms::xdlms::SetResult result;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            client.Set(
+              MakeDescriptor(),
+              MakeLongUnsignedBytes(0x4321u),
+              options,
+              result));
+
+  ASSERT_EQ(3u, channel.sentHistory.size());
+  dlms::apdu::XdlmsApdu firstBlock;
+  ASSERT_EQ(dlms::apdu::ApduStatus::Ok,
+            dlms::apdu::DecodeXdlmsApdu(
+              &channel.sentHistory[1][0],
+              channel.sentHistory[1].size(),
+              firstBlock));
+  EXPECT_EQ(dlms::apdu::SetRequestChoice::WithFirstDataBlock,
+            firstBlock.setRequestAny.choice);
+  EXPECT_FALSE(firstBlock.setRequestAny.dataBlock.lastBlock);
+  EXPECT_EQ(1u, firstBlock.setRequestAny.dataBlock.blockNumber);
+  EXPECT_EQ(2u, firstBlock.setRequestAny.dataBlock.rawData.size);
+  EXPECT_EQ(0x81u, firstBlock.setRequestAny.invokeIdAndPriority);
+
+  dlms::apdu::XdlmsApdu finalBlock;
+  ASSERT_EQ(dlms::apdu::ApduStatus::Ok,
+            dlms::apdu::DecodeXdlmsApdu(
+              &channel.sentHistory[2][0],
+              channel.sentHistory[2].size(),
+              finalBlock));
+  EXPECT_EQ(dlms::apdu::SetRequestChoice::WithDataBlock,
+            finalBlock.setRequestAny.choice);
+  EXPECT_TRUE(finalBlock.setRequestAny.dataBlock.lastBlock);
+  EXPECT_EQ(2u, finalBlock.setRequestAny.dataBlock.blockNumber);
+  EXPECT_EQ(1u, finalBlock.setRequestAny.dataBlock.rawData.size);
+  EXPECT_EQ(0x81u, finalBlock.setRequestAny.invokeIdAndPriority);
+
+  EXPECT_EQ(1u, result.invokeId);
+  EXPECT_EQ(0u, result.accessResult);
+}
+
+TEST(XdlmsClient, SetRejectsBlockAckMismatch)
+{
+  FakeApduChannel channel;
+  dlms::association::AssociationClient association(
+    channel,
+    dlms::association::DefaultAssociationOptions());
+  Establish(association, channel);
+  channel.receiveQueue.push_back(MakeSetAckBlockResponse(0x81u, 2u));
+
+  dlms::xdlms::ServiceOptions options =
+    dlms::xdlms::DefaultServiceOptions();
+  options.maxSetBlockPayloadBytes = 2u;
+
+  dlms::xdlms::XdlmsClient client(channel, association);
+  dlms::xdlms::SetResult result;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::DecodeFailed,
+            client.Set(
+              MakeDescriptor(),
+              MakeLongUnsignedBytes(0x4321u),
+              options,
+              result));
+}
+
+TEST(XdlmsClient, SetReportsBlockTransferRequiredWhenDisabled)
+{
+  FakeApduChannel channel;
+  dlms::association::AssociationClient association(
+    channel,
+    dlms::association::DefaultAssociationOptions());
+  Establish(association, channel);
+
+  dlms::xdlms::ServiceOptions options =
+    dlms::xdlms::DefaultServiceOptions();
+  options.allowBlockTransfer = false;
+  options.maxSetBlockPayloadBytes = 2u;
+
+  dlms::xdlms::XdlmsClient client(channel, association);
+  dlms::xdlms::SetResult result;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::BlockTransferRequired,
+            client.Set(
+              MakeDescriptor(),
+              MakeLongUnsignedBytes(0x4321u),
+              options,
+              result));
+  EXPECT_EQ(1, channel.sendCalls);
 }
 
 TEST(XdlmsClient, SetRejectsInvalidInputsAndRequiresAssociation)

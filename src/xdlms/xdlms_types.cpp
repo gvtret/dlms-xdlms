@@ -63,6 +63,7 @@ ServiceOptions DefaultServiceOptions()
   options.highPriority = false;
   options.allowBlockTransfer = true;
   options.maxBlockTransferBytes = 65536u;
+  options.maxSetBlockPayloadBytes = 1024u;
   return options;
 }
 

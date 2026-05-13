@@ -13,6 +13,7 @@ TEST(XdlmsTypes, DefaultServiceOptionsAreConfirmedNormalPriority)
   EXPECT_FALSE(options.highPriority);
   EXPECT_TRUE(options.allowBlockTransfer);
   EXPECT_GT(options.maxBlockTransferBytes, 0u);
+  EXPECT_GT(options.maxSetBlockPayloadBytes, 0u);
 }
 
 TEST(XdlmsTypes, LogicalNameStoresSixBytes)

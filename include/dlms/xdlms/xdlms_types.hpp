@@ -49,6 +49,7 @@ struct ServiceOptions
   bool highPriority;
   bool allowBlockTransfer;
   std::size_t maxBlockTransferBytes;
+  std::size_t maxSetBlockPayloadBytes;
 };
 
 struct GetResult
