@@ -228,16 +228,40 @@ keys, maintain invocation counters directly, build system titles, or implement
 AES-GCM. It only preserves the DLMS/COSEM ordering: service APDU first,
 ciphered APDU at the application-layer boundary.
 
-## 9. Ownership
+## 9. Client GET Block Transfer
+
+```mermaid
+sequenceDiagram
+  participant App as Caller
+  participant Client as XdlmsClient
+  participant Blocks as BlockTransferManager
+  participant Channel as IApduChannel
+
+  App->>Client: Get(descriptor)
+  Client->>Channel: Send GET-REQUEST-NORMAL
+  Channel-->>Client: GET-RESPONSE-WITH-DATABLOCK block 1, last=false
+  Client->>Blocks: Append block 1
+  Client->>Channel: Send GET-REQUEST-NEXT block 1
+  Channel-->>Client: GET-RESPONSE-WITH-DATABLOCK block 2, last=true
+  Client->>Blocks: Append block 2
+  Client-->>App: GetResult with concatenated raw-data
+```
+
+The block manager is scoped to one synchronous GET call. It validates block
+numbers, enforces the collected-size limit, and returns the final raw-data
+bytes to the existing `GetResult` contract.
+
+## 10. Ownership
 
 `XdlmsClient` stores non-owning references to the association and profile APDU
 channel boundaries and may store a non-owning reference to a security
 processor. Server dispatch stores non-owning access to an xDLMS server handler.
 The server APDU processor may also store a non-owning security processor
 reference. The layer does not own transport resources, association lifetime,
-security material, or COSEM object storage.
+security material, COSEM object storage, or block-transfer persistence outside
+one service call.
 
-## 10. Error Model
+## 11. Error Model
 
 The layer returns status codes only. Runtime API paths do not throw exceptions.
 Failures are reported at the xDLMS service boundary and do not close or release

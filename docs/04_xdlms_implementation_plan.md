@@ -366,3 +366,49 @@ Commit message:
 ```text
 feat(xdlms): add security apdu boundary
 ```
+
+## Phase 23. Block Transfer Documentation
+
+Deliverables:
+
+- client GET block-transfer requirements
+- API contract for block-transfer service options
+- architecture and sequence diagrams
+- focused unit test plan
+- split between GET, SET, and ACTION block-transfer phases
+
+Commit message:
+
+```text
+docs(xdlms): define get block transfer
+```
+
+## Phase 24. Client GET Block Transfer
+
+Deliverables:
+
+- GET response `BlockTransferManager`
+- GET-RESPONSE-WITH-DATABLOCK handling in `XdlmsClient`
+- GET-REQUEST-NEXT encode loop
+- block-number validation and collected-size guard
+- focused client tests, including secure block APDU boundaries
+
+Commit message:
+
+```text
+feat(xdlms): handle get response blocks
+```
+
+## Phase 25. Root Integration Update
+
+Deliverables:
+
+- root submodule pointer update
+- root integration test for multi-block GET over a fake APDU channel
+- full root build and test run
+
+Commit message:
+
+```text
+test: cover xdlms get block transfer
+```

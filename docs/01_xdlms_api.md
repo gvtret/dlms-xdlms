@@ -46,8 +46,12 @@ No C ABI is planned for the first implementation.
 
 - `confirmed`
 - `highPriority`
+- `allowBlockTransfer`
+- `maxBlockTransferBytes`
 
 The default is confirmed normal priority.
+Block transfer is enabled by default with a finite maximum collected payload
+size.
 
 `GetResult` contains:
 
@@ -59,6 +63,8 @@ The default is confirmed normal priority.
 
 The first phase keeps `data` as encoded xDLMS data bytes. Typed COSEM data
 projection belongs to later service/facade work.
+For GET response block transfer, `data` contains the concatenated raw-data
+bytes from all accepted response blocks.
 
 `SetResult` contains:
 
@@ -204,7 +210,16 @@ Security failures map to `SecurityFailed`. This includes protection,
 unprotection, authentication, replay, missing-key, invalid-key, and invocation
 counter failures reported by `dlms-security`.
 
-## 7. Module Diagram
+## 7. Block Transfer
+
+`XdlmsClient::Get()` owns the first client-side block transfer increment. The
+method keeps its public signature and consumes `GET-RESPONSE-WITH-DATABLOCK`
+responses internally when `ServiceOptions::allowBlockTransfer` is enabled.
+
+Unsupported block-transfer forms still return `BlockTransferRequired`.
+Malformed or out-of-order block sequences return `DecodeFailed`.
+
+## 8. Module Diagram
 
 ```mermaid
 classDiagram
@@ -216,6 +231,11 @@ classDiagram
 
   class InvokeIdAllocator {
     +Next() uint8_t
+  }
+
+  class BlockTransferManager {
+    +AppendGetBlock() XdlmsStatus
+    +Data() vector~uint8_t~
   }
 
   class CosemAttributeDescriptor {
@@ -263,6 +283,7 @@ classDiagram
   }
 
   XdlmsClient --> InvokeIdAllocator
+  XdlmsClient --> BlockTransferManager
   XdlmsClient --> CosemAttributeDescriptor
   XdlmsClient --> GetResult
   GetIndication --> ServiceOptions

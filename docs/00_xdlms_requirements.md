@@ -30,8 +30,9 @@ Document RAG references:
 - GET can be confirmed or unconfirmed, but the v1 client uses confirmed
   normal GET.
 - A normal response may carry either a data value or a data-access-result.
-- Block transfer is used when a response does not fit in one APDU; this is out
-  of scope for the first implementation.
+- Block transfer is used when a request or response does not fit in one APDU.
+  The next implementation increment covers client-side GET response block
+  transfer.
 
 ## 3. Implemented Client Boundary
 
@@ -201,7 +202,29 @@ Document RAG alignment:
 - ciphered APDUs carry security control information, invocation counter,
   encrypted APDU bytes, and authentication tag.
 
-## 10. Out of Scope
+## 10. Block Transfer Boundary
+
+The next xDLMS increment shall implement client-side GET response block
+transfer for confirmed LN GET.
+
+Rules:
+
+- a normal one-APDU GET response keeps the current behavior;
+- `GET-RESPONSE-WITH-DATABLOCK` with `Last_Block = false` starts a synchronous
+  block sequence inside `XdlmsClient::Get`;
+- the client sends `GET-REQUEST-NEXT` with the latest accepted block number;
+- raw-data blocks are concatenated into `GetResult::data`;
+- block numbers must be sequential and must not repeat;
+- malformed blocks map to `DecodeFailed`;
+- send and receive failures during the sequence map to existing transport
+  boundary statuses;
+- when security is configured, every request and response APDU in the block
+  sequence crosses the same protect/unprotect boundary as normal GET.
+
+SET and ACTION block transfer remain separate phases because their service
+sequences and APDU shapes differ from GET response block transfer.
+
+## 11. Out of Scope
 
 - association opening and release;
 - Wrapper, HDLC, LLC, TCP, UDP, and serial transport ownership;
@@ -210,7 +233,8 @@ Document RAG alignment:
 - server-side GET-NEXT, GET-WITH-LIST, and block transfer;
 - COSEM object access implementation inside `dlms-xdlms`;
 - GET-WITH-LIST;
-- GET-NEXT and block transfer;
+- server-side GET block production;
+- SET and ACTION block transfer;
 - selective access parameters;
 - COSEM object registry and access-right decisions;
 - public facade connection options.

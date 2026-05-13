@@ -114,7 +114,23 @@ Required integration tests:
   the original xDLMS service response;
 - invocation counters advance monotonically on both peers.
 
-## 8. Verification Commands
+## 8. Client GET Block Transfer Tests
+
+Required client tests:
+
+- normal GET response still returns one-block data unchanged;
+- first datablock plus final datablock returns concatenated data;
+- generated `GET-REQUEST-NEXT` carries the latest received block number;
+- send failure during `GET-REQUEST-NEXT` maps to `SendFailed`;
+- receive failure during a following datablock maps to `ReceiveFailed`;
+- malformed datablock maps to `DecodeFailed`;
+- repeated or skipped block number maps to `DecodeFailed`;
+- disabled automatic block transfer maps the first datablock to
+  `BlockTransferRequired`;
+- secure client protects every `GET-REQUEST-NEXT` and unprotects every
+  datablock response.
+
+## 9. Verification Commands
 
 Use the existing workspace build directory when available:
 
