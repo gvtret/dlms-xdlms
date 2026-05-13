@@ -238,9 +238,21 @@ Blocked SET sends `SET-REQUEST-WITH-FIRST-DATABLOCK` followed by
 `SET-REQUEST-WITH-DATABLOCK` requests. The final response is
 `SET-RESPONSE-LAST-DATABLOCK`.
 
-ACTION block-transfer APIs are planned but not implemented in this phase.
-ACTION will need an options-aware overload because response-side pblock
-collection and request-side pblock sending have different validation rules.
+`XdlmsClient::Action()` owns ACTION response-side pblock collection. The default
+overload keeps the existing signature. The options-aware overload allows callers
+to disable block transfer and to select confirmed/high-priority invoke-id
+flags:
+
+```cpp
+dlms::xdlms::ActionResult result;
+dlms::xdlms::ServiceOptions options = dlms::xdlms::DefaultServiceOptions();
+
+const dlms::xdlms::XdlmsStatus status =
+  client.Action(descriptor, true, encodedParameter, options, result);
+```
+
+ACTION request-side pblock sending is planned next and will use
+`maxActionBlockPayloadBytes` for splitting oversized invocation parameters.
 
 ## 8. Module Diagram
 
@@ -251,6 +263,7 @@ classDiagram
     +Set(CosemAttributeDescriptor, vector~uint8_t~, SetResult&) XdlmsStatus
     +Set(CosemAttributeDescriptor, vector~uint8_t~, ServiceOptions, SetResult&) XdlmsStatus
     +Action(CosemMethodDescriptor, vector~uint8_t~, ActionResult&) XdlmsStatus
+    +Action(CosemMethodDescriptor, vector~uint8_t~, ServiceOptions, ActionResult&) XdlmsStatus
   }
 
   class InvokeIdAllocator {
@@ -258,7 +271,7 @@ classDiagram
   }
 
   class BlockTransferManager {
-    +AppendGetBlock() XdlmsStatus
+    +AppendBlock() XdlmsStatus
     +Data() vector~uint8_t~
   }
 

@@ -205,3 +205,7 @@ Commit message:
 ```text
 test: cover xdlms action response block transfer
 ```
+
+### Phase 32. Client ACTION Request Blocks
+
+Detailed in [11_action_request_block_transfer_plan.md](11_action_request_block_transfer_plan.md).

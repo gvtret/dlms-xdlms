@@ -502,3 +502,49 @@ Commit message:
 ```text
 test: cover xdlms action response block transfer
 ```
+
+## Phase 32. ACTION Request Block Documentation
+
+Deliverables:
+
+- ACTION request-side block-transfer requirements
+- API contract for `maxActionBlockPayloadBytes`
+- request pblock architecture and sequence diagram
+- focused unit and root integration test plan
+
+Commit message:
+
+```text
+docs(xdlms): define action request blocks
+```
+
+## Phase 33. Client ACTION Request Blocks
+
+Deliverables:
+
+- `maxActionBlockPayloadBytes` in `ServiceOptions`
+- ACTION first-pblock and following-pblock request generation
+- `ACTION-RESPONSE-NEXT-PBLOCK` ACK validation
+- final normal ACTION response handling
+- final response pblock handling through the existing response collector
+- focused client unit tests
+
+Commit message:
+
+```text
+feat(xdlms): send action request blocks
+```
+
+## Phase 34. Root Integration Update
+
+Deliverables:
+
+- root submodule pointer update
+- root integration test for multi-block ACTION request over a fake APDU channel
+- full root build and test run
+
+Commit message:
+
+```text
+test: cover xdlms action request blocks
+```

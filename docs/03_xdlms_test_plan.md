@@ -147,7 +147,7 @@ Required client tests:
 
 ## 10. Client ACTION Block Transfer Tests
 
-Future response-side tests:
+Response-side tests:
 
 - normal ACTION remains unchanged;
 - first pblock plus final pblock returns decoded action result;
@@ -159,6 +159,20 @@ Future response-side tests:
   `BlockTransferRequired`;
 - secure client protects every next-pblock request and unprotects every pblock
   response.
+
+Request-side tests:
+
+- oversized ACTION parameter sends first and next request pblocks;
+- first request pblock includes the method descriptor and block 1 bytes;
+- next request pblocks contain only `DataBlockSA`;
+- non-final `ACTION-RESPONSE-NEXT-PBLOCK` ACK is validated;
+- final normal ACTION response is mapped to `ActionResult`;
+- final `ACTION-RESPONSE-WITH-PBLOCK` is collected by the existing response
+  block path;
+- disabled block transfer maps to `BlockTransferRequired`;
+- zero action block payload limit maps to `InvalidArgument`;
+- ACK block mismatch maps to `DecodeFailed`;
+- ACK invoke-id mismatch maps to `InvokeIdMismatch`.
 
 ## 11. Verification Commands
 
