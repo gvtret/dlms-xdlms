@@ -195,6 +195,26 @@ Required server APDU tests:
 
 ## 12. Verification Commands
 
+## 12. Server SET Request Block Tests
+
+Required server APDU tests:
+
+- normal SET request still dispatches unchanged;
+- first non-final data block returns `SET-RESPONSE-DATABLOCK`;
+- final following data block dispatches one `SetIndication` with concatenated
+  encoded data bytes;
+- final first data block dispatches immediately and returns
+  `SET-RESPONSE-LAST-DATABLOCK`;
+- following data block without active state maps to `DecodeFailed`;
+- skipped or duplicate block number maps to `DecodeFailed`;
+- invoke-id mismatch maps to `InvokeIdMismatch`;
+- accumulated size over `maxBlockTransferBytes` maps to `DecodeFailed`;
+- active state resets after final success and after decode failure;
+- secure APDU processor unprotects each request block and protects each ack or
+  final response.
+
+## 13. Verification Commands
+
 Use the existing workspace build directory when available:
 
 ```text

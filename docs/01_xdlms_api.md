@@ -189,7 +189,7 @@ before xDLMS decode and protects the encoded response before returning it.
 
 The processor owns one server-side ACTION request block-transfer state. A
 single processor instance is therefore scoped to one association/session when
-ACTION request pblocks are enabled.
+ACTION or SET request blocks are enabled.
 
 Supported first APDU shape:
 
@@ -197,13 +197,15 @@ Supported first APDU shape:
 - output: GET-RESPONSE-NORMAL with either data or data-access-result.
 - input: SET-REQUEST-NORMAL, no selective access;
 - output: SET-RESPONSE-NORMAL with data-access-result.
+- input: SET-REQUEST-WITH-FIRST-DATABLOCK followed by
+  SET-REQUEST-WITH-DATABLOCK for one attribute, no selective access;
+- output: SET-RESPONSE-DATABLOCK acknowledgements and
+  SET-RESPONSE-LAST-DATABLOCK final access result.
 
 Unsupported first APDU shapes:
 
 - GET-NEXT;
 - GET-WITH-LIST;
-- SET-WITH-FIRST-DATABLOCK;
-- SET-WITH-DATABLOCK;
 - SET-WITH-LIST;
 - SET-WITH-LIST-AND-FIRST-DATABLOCK;
 - selective access;

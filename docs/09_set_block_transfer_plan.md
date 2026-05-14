@@ -194,3 +194,7 @@ Commit message:
 ```text
 test: cover xdlms set block transfer
 ```
+
+### Phase 38. Server SET Request Blocks
+
+Detailed in [13_server_set_request_blocks_plan.md](13_server_set_request_blocks_plan.md).

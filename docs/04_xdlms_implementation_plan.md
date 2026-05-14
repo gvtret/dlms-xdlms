@@ -595,3 +595,51 @@ Commit message:
 ```text
 test: cover server action request block integration
 ```
+
+## Phase 38. Server SET Request Block Documentation
+
+Deliverables:
+
+- server-side SET request block reassembly requirements
+- `XdlmsServerApduProcessor` SET block state ownership contract
+- request block state architecture and sequence diagram
+- focused unit and root integration test plan
+
+Commit message:
+
+```text
+docs(xdlms): define server set request blocks
+```
+
+## Phase 39. Server SET Request Block Reassembly
+
+Deliverables:
+
+- processor-local SET request block state
+- `SET-REQUEST-WITH-FIRST-DATABLOCK` handling
+- `SET-REQUEST-WITH-DATABLOCK` handling
+- `SET-RESPONSE-DATABLOCK` acknowledgements
+- final dispatch through existing `DispatchSet`
+- `SET-RESPONSE-LAST-DATABLOCK` final response
+- focused server APDU tests
+
+Commit message:
+
+```text
+feat(xdlms): reassemble server set request blocks
+```
+
+## Phase 40. Root Integration Update
+
+Deliverables:
+
+- root submodule pointer update
+- root integration test for client SET request blocks reaching server APDU
+  processing
+- full root build and test run
+
+Commit message:
+
+```text
+test: cover server set request block integration
+```
