@@ -46,6 +46,16 @@ struct ActionRequestBlockState
   std::vector<std::uint8_t> data;
 };
 
+struct SetRequestBlockState
+{
+  bool active;
+  std::uint8_t invokeId;
+  ServiceOptions options;
+  CosemAttributeDescriptor descriptor;
+  std::uint32_t nextBlockNumber;
+  std::vector<std::uint8_t> data;
+};
+
 class IXdlmsServerHandler
 {
 public:
@@ -100,6 +110,7 @@ public:
 private:
   XdlmsServerDispatcher& dispatcher_;
   dlms::security::CipheredApduProcessor* security_;
+  SetRequestBlockState setBlocks_;
   ActionRequestBlockState actionBlocks_;
 };
 
@@ -107,6 +118,7 @@ GetIndication EmptyGetIndication();
 SetIndication EmptySetIndication();
 ActionIndication EmptyActionIndication();
 ActionRequestBlockState EmptyActionRequestBlockState();
+SetRequestBlockState EmptySetRequestBlockState();
 XdlmsStatus ValidateInvokeId(std::uint8_t invokeId);
 
 } // namespace xdlms
