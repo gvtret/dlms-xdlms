@@ -93,6 +93,18 @@ std::vector<std::uint8_t> MakeGetRequest(
     2u));
 }
 
+std::vector<std::uint8_t> MakeGetNextRequest(
+  std::uint8_t invokeIdAndPriority,
+  std::uint32_t blockNumber)
+{
+  dlms::apdu::XdlmsApdu apdu;
+  apdu.kind = dlms::apdu::XdlmsApduKind::GetRequest;
+  apdu.getRequestAny.choice = dlms::apdu::GetRequestChoice::Next;
+  apdu.getRequestAny.invokeIdAndPriority = invokeIdAndPriority;
+  apdu.getRequestAny.blockNumber = blockNumber;
+  return EncodeApdu(apdu);
+}
+
 dlms::apdu::DlmsData MakeLongUnsignedData(std::uint16_t value)
 {
   dlms::apdu::DlmsData data;
@@ -245,6 +257,26 @@ std::vector<std::uint8_t> MakeEncodedLongUnsigned(
   return std::vector<std::uint8_t>(buffer, buffer + writer.WrittenSize());
 }
 
+std::vector<std::uint8_t> MakeEncodedOctetString(std::size_t size)
+{
+  std::vector<std::uint8_t> bytes(size);
+  for (std::size_t i = 0u; i < bytes.size(); ++i) {
+    bytes[i] = static_cast<std::uint8_t>(i & 0xffu);
+  }
+
+  dlms::apdu::DlmsData data;
+  data.type = dlms::apdu::DlmsDataType::OctetString;
+  data.bytes.data = bytes.empty() ? 0 : &bytes[0];
+  data.bytes.size = bytes.size();
+
+  std::vector<std::uint8_t> output(size + 8u);
+  dlms::apdu::ApduWriter writer(&output[0], output.size());
+  EXPECT_EQ(dlms::apdu::ApduStatus::Ok,
+            dlms::apdu::EncodeDlmsData(data, writer));
+  output.resize(writer.WrittenSize());
+  return output;
+}
+
 dlms::apdu::XdlmsApdu DecodeResponse(
   const std::vector<std::uint8_t>& response)
 {
@@ -288,6 +320,135 @@ TEST(XdlmsServerApduProcessor, ProcessGetRequestNormalEncodesDataResponse)
   EXPECT_EQ(dlms::apdu::DlmsDataType::LongUnsigned,
             decoded.getResponseAny.result.data.type);
   EXPECT_EQ(0x1234u, decoded.getResponseAny.result.data.unsignedValue);
+}
+
+TEST(XdlmsServerApduProcessor, GetResponseBlocksAreServedByGetNext)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::ServiceOptions options =
+    dlms::xdlms::DefaultServiceOptions();
+  options.maxGetBlockPayloadBytes = 3u;
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher, options);
+  std::vector<std::uint8_t> response;
+  handler.result.hasData = true;
+  handler.result.data = MakeEncodedOctetString(4u);
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            processor.ProcessRequest(MakeGetRequest(0xC6u), response));
+
+  ASSERT_EQ(1, handler.calls);
+  dlms::apdu::XdlmsApdu firstBlock = DecodeResponse(response);
+  EXPECT_EQ(dlms::apdu::GetResponseChoice::WithDataBlock,
+            firstBlock.getResponseAny.choice);
+  EXPECT_EQ(0xC6u, firstBlock.getResponseAny.invokeIdAndPriority);
+  EXPECT_FALSE(firstBlock.getResponseAny.dataBlock.lastBlock);
+  EXPECT_EQ(1u, firstBlock.getResponseAny.dataBlock.blockNumber);
+  EXPECT_EQ(3u, firstBlock.getResponseAny.dataBlock.rawData.size);
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            processor.ProcessRequest(MakeGetNextRequest(0xC6u, 1u), response));
+
+  EXPECT_EQ(1, handler.calls);
+  dlms::apdu::XdlmsApdu finalBlock = DecodeResponse(response);
+  EXPECT_EQ(dlms::apdu::GetResponseChoice::WithDataBlock,
+            finalBlock.getResponseAny.choice);
+  EXPECT_EQ(0xC6u, finalBlock.getResponseAny.invokeIdAndPriority);
+  EXPECT_TRUE(finalBlock.getResponseAny.dataBlock.lastBlock);
+  EXPECT_EQ(2u, finalBlock.getResponseAny.dataBlock.blockNumber);
+  EXPECT_EQ(handler.result.data.size() - 3u,
+            finalBlock.getResponseAny.dataBlock.rawData.size);
+}
+
+TEST(XdlmsServerApduProcessor, GetNextWithoutActiveBlockFailsDecode)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
+  std::vector<std::uint8_t> response;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::DecodeFailed,
+            processor.ProcessRequest(MakeGetNextRequest(0x81u, 1u), response));
+  EXPECT_TRUE(response.empty());
+  EXPECT_EQ(0, handler.calls);
+}
+
+TEST(XdlmsServerApduProcessor, GetNextRejectsWrongBlockAndResetsState)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::ServiceOptions options =
+    dlms::xdlms::DefaultServiceOptions();
+  options.maxGetBlockPayloadBytes = 3u;
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher, options);
+  std::vector<std::uint8_t> response;
+  handler.result.hasData = true;
+  handler.result.data = MakeEncodedOctetString(4u);
+
+  ASSERT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            processor.ProcessRequest(MakeGetRequest(0x81u), response));
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::DecodeFailed,
+            processor.ProcessRequest(MakeGetNextRequest(0x81u, 2u), response));
+  EXPECT_TRUE(response.empty());
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::DecodeFailed,
+            processor.ProcessRequest(MakeGetNextRequest(0x81u, 1u), response));
+}
+
+TEST(XdlmsServerApduProcessor, GetNextRejectsInvokeMismatch)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::ServiceOptions options =
+    dlms::xdlms::DefaultServiceOptions();
+  options.maxGetBlockPayloadBytes = 3u;
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher, options);
+  std::vector<std::uint8_t> response;
+  handler.result.hasData = true;
+  handler.result.data = MakeEncodedOctetString(4u);
+
+  ASSERT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            processor.ProcessRequest(MakeGetRequest(0x81u), response));
+  EXPECT_EQ(
+    dlms::xdlms::XdlmsStatus::InvokeIdMismatch,
+    processor.ProcessRequest(MakeGetNextRequest(0x82u, 1u), response));
+  EXPECT_TRUE(response.empty());
+}
+
+TEST(XdlmsServerApduProcessor, OversizedGetDataRequiresEnabledBlocks)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::ServiceOptions options =
+    dlms::xdlms::DefaultServiceOptions();
+  options.allowBlockTransfer = false;
+  options.maxGetBlockPayloadBytes = 3u;
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher, options);
+  std::vector<std::uint8_t> response;
+  handler.result.hasData = true;
+  handler.result.data = MakeEncodedOctetString(4u);
+
+  EXPECT_EQ(
+    dlms::xdlms::XdlmsStatus::BlockTransferRequired,
+    processor.ProcessRequest(MakeGetRequest(0x81u), response));
+  EXPECT_TRUE(response.empty());
+}
+
+TEST(XdlmsServerApduProcessor, OversizedGetDataRejectsZeroBlockPayload)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  dlms::xdlms::ServiceOptions options =
+    dlms::xdlms::DefaultServiceOptions();
+  options.maxGetBlockPayloadBytes = 0u;
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher, options);
+  std::vector<std::uint8_t> response;
+  handler.result.hasData = true;
+  handler.result.data = MakeEncodedOctetString(4u);
+
+  EXPECT_EQ(
+    dlms::xdlms::XdlmsStatus::InvalidArgument,
+    processor.ProcessRequest(MakeGetRequest(0x81u), response));
+  EXPECT_TRUE(response.empty());
 }
 
 TEST(XdlmsServerApduProcessor, ProcessGetRequestNormalEncodesAccessResult)
@@ -349,7 +510,7 @@ TEST(XdlmsServerApduProcessor, RejectsUnsupportedGetShapes)
   getNext.getRequestAny.invokeIdAndPriority = 0x81u;
   getNext.getRequestAny.blockNumber = 1u;
 
-  EXPECT_EQ(dlms::xdlms::XdlmsStatus::UnsupportedFeature,
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::DecodeFailed,
             processor.ProcessRequest(EncodeApdu(getNext), response));
 
   dlms::apdu::XdlmsApdu selective =

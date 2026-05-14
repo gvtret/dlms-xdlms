@@ -25,9 +25,11 @@ std::uint8_t MakeInvokeIdAndPriority(
   return value;
 }
 
-ServiceOptions ParseServiceOptions(std::uint8_t invokeIdAndPriority)
+ServiceOptions ParseServiceOptions(
+  std::uint8_t invokeIdAndPriority,
+  const ServiceOptions& defaults)
 {
-  ServiceOptions options = DefaultServiceOptions();
+  ServiceOptions options = defaults;
   options.confirmed = (invokeIdAndPriority & 0x80u) != 0u;
   options.highPriority = (invokeIdAndPriority & 0x40u) != 0u;
   return options;
@@ -152,6 +154,105 @@ XdlmsStatus EncodeGetResponse(
     : XdlmsStatus::EncodeFailed;
 }
 
+XdlmsStatus EncodeGetDataBlockResponse(
+  std::uint8_t invokeIdAndPriority,
+  bool lastBlock,
+  std::uint32_t blockNumber,
+  const std::uint8_t* data,
+  std::size_t dataSize,
+  std::vector<std::uint8_t>& responseApdu)
+{
+  dlms::apdu::XdlmsApdu response;
+  response.kind = dlms::apdu::XdlmsApduKind::GetResponse;
+  response.getResponseAny.choice =
+    dlms::apdu::GetResponseChoice::WithDataBlock;
+  response.getResponseAny.invokeIdAndPriority = invokeIdAndPriority;
+  response.getResponseAny.dataBlock.lastBlock = lastBlock;
+  response.getResponseAny.dataBlock.blockNumber = blockNumber;
+  response.getResponseAny.dataBlock.rawData.data = data;
+  response.getResponseAny.dataBlock.rawData.size = dataSize;
+
+  return dlms::apdu::EncodeXdlmsApdu(response, responseApdu) ==
+      dlms::apdu::ApduStatus::Ok
+    ? XdlmsStatus::Ok
+    : XdlmsStatus::EncodeFailed;
+}
+
+XdlmsStatus SendNextGetResponseBlock(
+  GetResponseBlockState& blocks,
+  std::vector<std::uint8_t>& responseApdu)
+{
+  if (!blocks.active ||
+      blocks.options.maxGetBlockPayloadBytes == 0u ||
+      blocks.offset >= blocks.data.size()) {
+    blocks = EmptyGetResponseBlockState();
+    return XdlmsStatus::InvalidArgument;
+  }
+
+  const std::size_t remaining = blocks.data.size() - blocks.offset;
+  const std::size_t blockSize =
+    remaining < blocks.options.maxGetBlockPayloadBytes
+      ? remaining
+      : blocks.options.maxGetBlockPayloadBytes;
+  const bool lastBlock = blocks.offset + blockSize == blocks.data.size();
+  const std::uint32_t blockNumber = blocks.nextBlockNumber;
+  const std::uint8_t responseInvokeIdAndPriority =
+    MakeInvokeIdAndPriority(blocks.invokeId, blocks.options);
+
+  const XdlmsStatus status =
+    EncodeGetDataBlockResponse(
+      responseInvokeIdAndPriority,
+      lastBlock,
+      blockNumber,
+      blockSize == 0u ? 0 : &blocks.data[blocks.offset],
+      blockSize,
+      responseApdu);
+  if (status != XdlmsStatus::Ok) {
+    blocks = EmptyGetResponseBlockState();
+    return status;
+  }
+
+  blocks.offset += blockSize;
+  ++blocks.nextBlockNumber;
+  if (lastBlock) {
+    blocks = EmptyGetResponseBlockState();
+  }
+  return XdlmsStatus::Ok;
+}
+
+XdlmsStatus EncodeGetResponseOrStartBlocks(
+  std::uint8_t invokeIdAndPriority,
+  const GetIndication& indication,
+  const GetResult& result,
+  GetResponseBlockState& blocks,
+  std::vector<std::uint8_t>& responseApdu)
+{
+  if (!result.hasData || result.data.size() <=
+        indication.options.maxGetBlockPayloadBytes) {
+    return EncodeGetResponse(invokeIdAndPriority, result, responseApdu);
+  }
+
+  if (result.data.size() > indication.options.maxBlockTransferBytes) {
+    return XdlmsStatus::DecodeFailed;
+  }
+
+  if (!indication.options.allowBlockTransfer) {
+    return XdlmsStatus::BlockTransferRequired;
+  }
+
+  if (indication.options.maxGetBlockPayloadBytes == 0u) {
+    return XdlmsStatus::InvalidArgument;
+  }
+
+  blocks.active = true;
+  blocks.invokeId = indication.invokeId;
+  blocks.options = indication.options;
+  blocks.nextBlockNumber = 1u;
+  blocks.offset = 0u;
+  blocks.data = result.data;
+  return SendNextGetResponseBlock(blocks, responseApdu);
+}
+
 XdlmsStatus EncodeSetResponse(
   std::uint8_t invokeIdAndPriority,
   const SetResult& result,
@@ -263,10 +364,38 @@ XdlmsStatus EncodeActionNextPblockResponse(
 XdlmsStatus ProcessGetRequest(
   const dlms::apdu::XdlmsApdu& request,
   XdlmsServerDispatcher& dispatcher,
+  const ServiceOptions& processorOptions,
+  GetResponseBlockState& getBlocks,
   std::vector<std::uint8_t>& responseApdu)
 {
+  if (request.getRequestAny.choice == dlms::apdu::GetRequestChoice::Next) {
+    if (!getBlocks.active) {
+      return XdlmsStatus::DecodeFailed;
+    }
+
+    const std::uint8_t invokeId = static_cast<std::uint8_t>(
+      request.getRequestAny.invokeIdAndPriority & 0x0Fu);
+    if (invokeId != getBlocks.invokeId) {
+      getBlocks = EmptyGetResponseBlockState();
+      return XdlmsStatus::InvokeIdMismatch;
+    }
+
+    if (request.getRequestAny.blockNumber !=
+        getBlocks.nextBlockNumber - 1u) {
+      getBlocks = EmptyGetResponseBlockState();
+      return XdlmsStatus::DecodeFailed;
+    }
+
+    return SendNextGetResponseBlock(getBlocks, responseApdu);
+  }
+
   if (request.getRequestAny.choice != dlms::apdu::GetRequestChoice::Normal) {
     return XdlmsStatus::UnsupportedFeature;
+  }
+
+  if (getBlocks.active) {
+    getBlocks = EmptyGetResponseBlockState();
+    return XdlmsStatus::DecodeFailed;
   }
 
   if (request.getRequest.hasSelectiveAccess) {
@@ -277,7 +406,9 @@ XdlmsStatus ProcessGetRequest(
   indication.invokeId =
     static_cast<std::uint8_t>(request.getRequest.invokeIdAndPriority & 0x0Fu);
   indication.options =
-    ParseServiceOptions(request.getRequest.invokeIdAndPriority);
+    ParseServiceOptions(
+      request.getRequest.invokeIdAndPriority,
+      processorOptions);
   indication.descriptor = ToXdlmsDescriptor(request.getRequest.descriptor);
 
   if (!indication.options.confirmed) {
@@ -292,12 +423,18 @@ XdlmsStatus ProcessGetRequest(
 
   const std::uint8_t responseInvokeIdAndPriority =
     MakeInvokeIdAndPriority(indication.invokeId, indication.options);
-  return EncodeGetResponse(responseInvokeIdAndPriority, result, responseApdu);
+  return EncodeGetResponseOrStartBlocks(
+    responseInvokeIdAndPriority,
+    indication,
+    result,
+    getBlocks,
+    responseApdu);
 }
 
 XdlmsStatus ProcessSetRequest(
   const dlms::apdu::XdlmsApdu& request,
   XdlmsServerDispatcher& dispatcher,
+  const ServiceOptions& processorOptions,
   SetRequestBlockState& setBlocks,
   std::vector<std::uint8_t>& responseApdu)
 {
@@ -317,7 +454,9 @@ XdlmsStatus ProcessSetRequest(
     const std::uint8_t invokeId = static_cast<std::uint8_t>(
       request.setRequestAny.invokeIdAndPriority & 0x0Fu);
     const ServiceOptions options =
-      ParseServiceOptions(request.setRequestAny.invokeIdAndPriority);
+      ParseServiceOptions(
+        request.setRequestAny.invokeIdAndPriority,
+        processorOptions);
     if (!options.confirmed) {
       return XdlmsStatus::UnsupportedFeature;
     }
@@ -455,7 +594,9 @@ XdlmsStatus ProcessSetRequest(
   indication.invokeId =
     static_cast<std::uint8_t>(request.setRequest.invokeIdAndPriority & 0x0Fu);
   indication.options =
-    ParseServiceOptions(request.setRequest.invokeIdAndPriority);
+    ParseServiceOptions(
+      request.setRequest.invokeIdAndPriority,
+      processorOptions);
   indication.descriptor = ToXdlmsDescriptor(request.setRequest.descriptor);
 
   if (!indication.options.confirmed) {
@@ -481,6 +622,7 @@ XdlmsStatus ProcessSetRequest(
 XdlmsStatus ProcessActionRequest(
   const dlms::apdu::XdlmsApdu& request,
   XdlmsServerDispatcher& dispatcher,
+  const ServiceOptions& processorOptions,
   ActionRequestBlockState& actionBlocks,
   std::vector<std::uint8_t>& responseApdu)
 {
@@ -497,7 +639,9 @@ XdlmsStatus ProcessActionRequest(
     const std::uint8_t invokeId = static_cast<std::uint8_t>(
       request.actionRequestAny.invokeIdAndPriority & 0x0Fu);
     const ServiceOptions options =
-      ParseServiceOptions(request.actionRequestAny.invokeIdAndPriority);
+      ParseServiceOptions(
+        request.actionRequestAny.invokeIdAndPriority,
+        processorOptions);
     if (!options.confirmed) {
       return XdlmsStatus::UnsupportedFeature;
     }
@@ -638,7 +782,9 @@ XdlmsStatus ProcessActionRequest(
   indication.invokeId = static_cast<std::uint8_t>(
     request.actionRequest.invokeIdAndPriority & 0x0Fu);
   indication.options =
-    ParseServiceOptions(request.actionRequest.invokeIdAndPriority);
+    ParseServiceOptions(
+      request.actionRequest.invokeIdAndPriority,
+      processorOptions);
   indication.descriptor = ToXdlmsDescriptor(request.actionRequest.descriptor);
   indication.hasParameter = request.actionRequest.hasInvocationParameter;
 
@@ -785,6 +931,20 @@ XdlmsServerApduProcessor::XdlmsServerApduProcessor(
   XdlmsServerDispatcher& dispatcher)
   : dispatcher_(dispatcher)
   , security_(0)
+  , options_(DefaultServiceOptions())
+  , getBlocks_(EmptyGetResponseBlockState())
+  , setBlocks_(EmptySetRequestBlockState())
+  , actionBlocks_(EmptyActionRequestBlockState())
+{
+}
+
+XdlmsServerApduProcessor::XdlmsServerApduProcessor(
+  XdlmsServerDispatcher& dispatcher,
+  const ServiceOptions& options)
+  : dispatcher_(dispatcher)
+  , security_(0)
+  , options_(options)
+  , getBlocks_(EmptyGetResponseBlockState())
   , setBlocks_(EmptySetRequestBlockState())
   , actionBlocks_(EmptyActionRequestBlockState())
 {
@@ -795,6 +955,21 @@ XdlmsServerApduProcessor::XdlmsServerApduProcessor(
   dlms::security::CipheredApduProcessor& security)
   : dispatcher_(dispatcher)
   , security_(&security)
+  , options_(DefaultServiceOptions())
+  , getBlocks_(EmptyGetResponseBlockState())
+  , setBlocks_(EmptySetRequestBlockState())
+  , actionBlocks_(EmptyActionRequestBlockState())
+{
+}
+
+XdlmsServerApduProcessor::XdlmsServerApduProcessor(
+  XdlmsServerDispatcher& dispatcher,
+  dlms::security::CipheredApduProcessor& security,
+  const ServiceOptions& options)
+  : dispatcher_(dispatcher)
+  , security_(&security)
+  , options_(options)
+  , getBlocks_(EmptyGetResponseBlockState())
   , setBlocks_(EmptySetRequestBlockState())
   , actionBlocks_(EmptyActionRequestBlockState())
 {
@@ -828,13 +1003,19 @@ XdlmsStatus XdlmsServerApduProcessor::ProcessRequest(
   XdlmsStatus status = XdlmsStatus::UnsupportedFeature;
   switch (request.kind) {
     case dlms::apdu::XdlmsApduKind::GetRequest:
-      status = ProcessGetRequest(request, dispatcher_, responseApdu);
+      status = ProcessGetRequest(
+        request,
+        dispatcher_,
+        options_,
+        getBlocks_,
+        responseApdu);
       break;
 
     case dlms::apdu::XdlmsApduKind::SetRequest:
       status = ProcessSetRequest(
         request,
         dispatcher_,
+        options_,
         setBlocks_,
         responseApdu);
       break;
@@ -843,6 +1024,7 @@ XdlmsStatus XdlmsServerApduProcessor::ProcessRequest(
       status = ProcessActionRequest(
         request,
         dispatcher_,
+        options_,
         actionBlocks_,
         responseApdu);
       break;
@@ -896,6 +1078,18 @@ ActionIndication EmptyActionIndication()
   indication.hasParameter = false;
   indication.parameter.clear();
   return indication;
+}
+
+GetResponseBlockState EmptyGetResponseBlockState()
+{
+  GetResponseBlockState state;
+  state.active = false;
+  state.invokeId = 0u;
+  state.options = DefaultServiceOptions();
+  state.nextBlockNumber = 1u;
+  state.offset = 0u;
+  state.data.clear();
+  return state;
 }
 
 ActionRequestBlockState EmptyActionRequestBlockState()

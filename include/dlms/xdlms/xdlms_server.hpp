@@ -46,6 +46,16 @@ struct ActionRequestBlockState
   std::vector<std::uint8_t> data;
 };
 
+struct GetResponseBlockState
+{
+  bool active;
+  std::uint8_t invokeId;
+  ServiceOptions options;
+  std::uint32_t nextBlockNumber;
+  std::size_t offset;
+  std::vector<std::uint8_t> data;
+};
+
 struct SetRequestBlockState
 {
   bool active;
@@ -101,7 +111,14 @@ public:
   explicit XdlmsServerApduProcessor(XdlmsServerDispatcher& dispatcher);
   XdlmsServerApduProcessor(
     XdlmsServerDispatcher& dispatcher,
+    const ServiceOptions& options);
+  XdlmsServerApduProcessor(
+    XdlmsServerDispatcher& dispatcher,
     dlms::security::CipheredApduProcessor& security);
+  XdlmsServerApduProcessor(
+    XdlmsServerDispatcher& dispatcher,
+    dlms::security::CipheredApduProcessor& security,
+    const ServiceOptions& options);
 
   XdlmsStatus ProcessRequest(
     const std::vector<std::uint8_t>& requestApdu,
@@ -110,6 +127,8 @@ public:
 private:
   XdlmsServerDispatcher& dispatcher_;
   dlms::security::CipheredApduProcessor* security_;
+  ServiceOptions options_;
+  GetResponseBlockState getBlocks_;
   SetRequestBlockState setBlocks_;
   ActionRequestBlockState actionBlocks_;
 };
@@ -117,6 +136,7 @@ private:
 GetIndication EmptyGetIndication();
 SetIndication EmptySetIndication();
 ActionIndication EmptyActionIndication();
+GetResponseBlockState EmptyGetResponseBlockState();
 ActionRequestBlockState EmptyActionRequestBlockState();
 SetRequestBlockState EmptySetRequestBlockState();
 XdlmsStatus ValidateInvokeId(std::uint8_t invokeId);

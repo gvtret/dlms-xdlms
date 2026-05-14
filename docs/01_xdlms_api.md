@@ -176,7 +176,14 @@ GET or SET indication, and encodes the corresponding response:
 ```cpp
 dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
 dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher);
+dlms::xdlms::XdlmsServerApduProcessor processorWithOptions(
+  dispatcher,
+  dlms::xdlms::DefaultServiceOptions());
 dlms::xdlms::XdlmsServerApduProcessor secureProcessor(dispatcher, security);
+dlms::xdlms::XdlmsServerApduProcessor secureProcessorWithOptions(
+  dispatcher,
+  security,
+  dlms::xdlms::DefaultServiceOptions());
 
 std::vector<std::uint8_t> response;
 const dlms::xdlms::XdlmsStatus status =
@@ -187,6 +194,8 @@ const dlms::xdlms::XdlmsStatus status =
 only when encoding succeeds. When constructed with a
 `dlms::security::CipheredApduProcessor`, the processor unprotects the request
 before xDLMS decode and protects the encoded response before returning it.
+Options-aware constructors set processor-local block transfer limits while
+still deriving confirmed/high-priority flags from each incoming invoke id byte.
 
 The processor owns one server-side ACTION request block-transfer state. A
 single processor instance is therefore scoped to one association/session when

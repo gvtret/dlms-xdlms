@@ -69,7 +69,9 @@ Defaults:
 
 The handler API does not change. `IXdlmsServerHandler::HandleGet()` still
 returns a complete successful `GetResult::data` buffer. The APDU processor owns
-the response block splitting.
+the response block splitting. Options-aware `XdlmsServerApduProcessor`
+constructors set the server-side block limits for all requests handled by that
+processor instance.
 
 ## 4. Architecture
 
