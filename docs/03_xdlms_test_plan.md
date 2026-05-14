@@ -213,7 +213,25 @@ Required server APDU tests:
 - secure APDU processor unprotects each request block and protects each ack or
   final response.
 
-## 13. Verification Commands
+## 13. Server GET Response Block Tests
+
+Required server APDU tests:
+
+- small successful GET still encodes `GET-RESPONSE-NORMAL`;
+- large successful GET emits `GET-RESPONSE-WITH-DATABLOCK` responses;
+- `GET-REQUEST-NEXT` returns the next response block for the active sequence;
+- wrong `GET-REQUEST-NEXT` block number maps to `DecodeFailed`;
+- wrong invoke id maps to `InvokeIdMismatch`;
+- `GET-REQUEST-NEXT` without active state maps to `DecodeFailed`;
+- disabled block transfer maps oversized successful data to
+  `BlockTransferRequired`;
+- zero `maxGetBlockPayloadBytes` maps oversized successful data to
+  `InvalidArgument`;
+- active state resets after final success and after failures;
+- secure APDU processor unprotects each request and protects each response
+  block.
+
+## 14. Verification Commands
 
 Use the existing workspace build directory when available:
 

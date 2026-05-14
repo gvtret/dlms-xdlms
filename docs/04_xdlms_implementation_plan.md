@@ -643,3 +643,49 @@ Commit message:
 ```text
 test: cover server set request block integration
 ```
+
+## Phase 41. Server GET Response Block Documentation
+
+Deliverables:
+
+- server-side GET response block requirements
+- `maxGetBlockPayloadBytes` API contract
+- APDU processor state and sequence diagram
+- focused unit and root integration test plan
+
+Commit message:
+
+```text
+docs(xdlms): define server get response blocks
+```
+
+## Phase 42. Server GET Response Block Implementation
+
+Deliverables:
+
+- processor-local GET response block state
+- first `GET-RESPONSE-WITH-DATABLOCK` generation for oversized successful GET
+  data
+- `GET-REQUEST-NEXT` handling
+- state reset after final success and failure
+- focused server APDU tests
+
+Commit message:
+
+```text
+feat(xdlms): send server get response blocks
+```
+
+## Phase 43. Root Integration Update
+
+Deliverables:
+
+- root submodule pointer update
+- root integration test for client GET consuming server response blocks
+- full root build and test run
+
+Commit message:
+
+```text
+test: cover server get response block integration
+```

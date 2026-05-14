@@ -48,8 +48,9 @@ No C ABI is planned for the first implementation.
 - `highPriority`
 - `allowBlockTransfer`
 - `maxBlockTransferBytes`
+- `maxGetBlockPayloadBytes`
 - `maxSetBlockPayloadBytes`
-- future `maxActionBlockPayloadBytes`
+- `maxActionBlockPayloadBytes`
 
 The default is confirmed normal priority.
 Block transfer is enabled by default with a finite maximum collected payload
@@ -189,12 +190,14 @@ before xDLMS decode and protects the encoded response before returning it.
 
 The processor owns one server-side ACTION request block-transfer state. A
 single processor instance is therefore scoped to one association/session when
-ACTION or SET request blocks are enabled.
+GET response blocks or ACTION/SET request blocks are enabled.
 
 Supported first APDU shape:
 
 - input: GET-REQUEST-NORMAL, no selective access;
 - output: GET-RESPONSE-NORMAL with either data or data-access-result.
+- input: GET-REQUEST-NEXT for an active server GET response block sequence;
+- output: GET-RESPONSE-WITH-DATABLOCK until the final block is sent.
 - input: SET-REQUEST-NORMAL, no selective access;
 - output: SET-RESPONSE-NORMAL with data-access-result.
 - input: SET-REQUEST-WITH-FIRST-DATABLOCK followed by
@@ -204,7 +207,6 @@ Supported first APDU shape:
 
 Unsupported first APDU shapes:
 
-- GET-NEXT;
 - GET-WITH-LIST;
 - SET-WITH-LIST;
 - SET-WITH-LIST-AND-FIRST-DATABLOCK;
@@ -227,6 +229,13 @@ responses internally when `ServiceOptions::allowBlockTransfer` is enabled.
 
 Unsupported block-transfer forms still return `BlockTransferRequired`.
 Malformed or out-of-order block sequences return `DecodeFailed`.
+
+`XdlmsServerApduProcessor` owns server-side GET response block transfer. A
+handler returns complete `GetResult::data`; when the encoded data is larger
+than `maxGetBlockPayloadBytes`, the processor emits
+`GET-RESPONSE-WITH-DATABLOCK` responses and serves following
+`GET-REQUEST-NEXT` requests from processor-local state. Data-access-result
+responses remain normal GET responses.
 
 `XdlmsClient::Set()` owns the next client-side block transfer increment. The
 default overload keeps the existing signature. An options-aware overload allows
@@ -327,6 +336,14 @@ classDiagram
     +ProcessRequest(vector~uint8_t~, vector~uint8_t~&) XdlmsStatus
   }
 
+  class GetResponseBlockState {
+    +active
+    +invokeId
+    +nextBlockNumber
+    +offset
+    +data
+  }
+
   class CipheredApduProcessor {
     +Protect(vector~uint8_t~, vector~uint8_t~&) SecurityStatus
     +Unprotect(vector~uint8_t~, vector~uint8_t~&) SecurityStatus
@@ -347,6 +364,7 @@ classDiagram
   XdlmsServerDispatcher --> SetIndication
   XdlmsServerDispatcher --> SetResult
   XdlmsServerApduProcessor --> XdlmsServerDispatcher
+  XdlmsServerApduProcessor --> GetResponseBlockState
   XdlmsClient --> CipheredApduProcessor
   XdlmsServerApduProcessor --> CipheredApduProcessor
 ```

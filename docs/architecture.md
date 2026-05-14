@@ -251,6 +251,27 @@ The block manager is scoped to one synchronous GET call. It validates block
 numbers, enforces the collected-size limit, and returns the final raw-data
 bytes to the existing `GetResult` contract.
 
+## 9.1 Server GET Response Block Transfer
+
+```mermaid
+sequenceDiagram
+  participant Client as Client
+  participant Server as XdlmsServerApduProcessor
+  participant Handler as IXdlmsServerHandler
+
+  Client->>Server: GET-REQUEST-NORMAL
+  Server->>Handler: HandleGet()
+  Handler-->>Server: GetResult(data = large value)
+  Server-->>Client: GET-RESPONSE-WITH-DATABLOCK block 1
+  Client->>Server: GET-REQUEST-NEXT block 1
+  Server-->>Client: GET-RESPONSE-WITH-DATABLOCK block 2, last=true
+```
+
+`XdlmsServerApduProcessor` owns one `GetResponseBlockState` alongside the
+existing SET and ACTION request block states. The state stores the complete
+encoded response data, the next block number, and the current offset. It is
+cleared after the final block or on decode/invoke mismatch failures.
+
 ## 10. Client SET Block Transfer
 
 ```mermaid
