@@ -152,13 +152,16 @@ Document RAG alignment:
   confirmed normal SET only;
 - the SET service writes one or more COSEM object attributes; this phase
   supports one attribute in one request;
-- large SET payloads use block-transfer request types and remain out of scope.
+- large SET payloads use service-specific block-transfer request types and are
+  covered by the block-transfer boundary below.
 
 ## 8. State Requirements
 
-The client implementation shall be stateless except for invoke-id allocation.
-The server boundary shall be stateless and store only non-owning handler
-references.
+The client implementation shall keep only invoke-id allocation state and
+service-call-local block-transfer state. Server dispatch shall store only
+non-owning handler references. `XdlmsServerApduProcessor` may store one active
+association/session-scoped block sequence per supported service direction:
+GET response blocks, SET request blocks, and ACTION request blocks.
 
 Rules:
 
@@ -169,8 +172,10 @@ Rules:
 - a receive failure returns `ReceiveFailed`;
 - malformed or unexpected APDUs return `DecodeFailed`;
 - response invoke-id mismatch returns `InvokeIdMismatch`;
-- block-transfer responses return `BlockTransferRequired` until a block
-  manager is implemented.
+- unsupported block-transfer shapes return `BlockTransferRequired` or
+  `DecodeFailed` according to the service contract;
+- active server block states reset after final success and after validation or
+  decode failures.
 
 ## 9. Security Boundary
 
@@ -204,10 +209,11 @@ Document RAG alignment:
 
 ## 10. Block Transfer Boundary
 
-The next xDLMS increment shall implement client-side GET response block
-transfer for confirmed LN GET.
+The xDLMS layer supports service-specific block transfer for the MVP GET, SET,
+and ACTION paths. Block transfer remains synchronous and bound to one service
+call or one server APDU processor instance.
 
-Rules:
+Client-side GET response block transfer rules:
 
 - a normal one-APDU GET response keeps the current behavior;
 - `GET-RESPONSE-WITH-DATABLOCK` with `Last_Block = false` starts a synchronous
@@ -221,13 +227,7 @@ Rules:
 - when security is configured, every request and response APDU in the block
   sequence crosses the same protect/unprotect boundary as normal GET.
 
-SET and ACTION block transfer remain separate phases because their service
-sequences and APDU shapes differ from GET response block transfer.
-
-The next SET block-transfer increment shall implement client-side
-service-specific long SET for one attribute.
-
-Rules:
+Client-side SET request block transfer rules:
 
 - normal one-APDU SET keeps the current behavior;
 - blocked SET is opt-in through service options;
@@ -241,22 +241,38 @@ Rules:
   `DecodeFailed`;
 - security protect/unprotect applies to every block request and response.
 
-ACTION block transfer remains a later phase and is documented separately
-because ACTION can block either method invocation parameters or return
-parameters.
+ACTION block transfer rules:
+
+- normal one-APDU ACTION keeps the current behavior;
+- oversized ACTION parameters may be sent as request pblocks;
+- ACTION response pblocks are collected until the final response block;
+- the final response payload is decoded into the existing `ActionResult`
+  contract;
+- ACTION request and response block transfer remain service-specific because
+  ACTION can block both invocation parameters and return parameters.
+
+Server-side block transfer rules:
+
+- `SET-REQUEST-WITH-FIRST-DATABLOCK` and following SET request blocks are
+  reassembled into one `SetIndication`;
+- ACTION request pblocks are reassembled into one `ActionIndication`;
+- oversized successful GET data may be split into
+  `GET-RESPONSE-WITH-DATABLOCK` responses;
+- `GET-REQUEST-NEXT` serves the next active GET response block;
+- malformed, skipped, duplicate, or invoke-id-mismatched block requests reset
+  the active server state and return the documented status.
 
 ## 11. Out of Scope
 
 - association opening and release;
 - Wrapper, HDLC, LLC, TCP, UDP, and serial transport ownership;
-- server-side ACTION dispatch implementation;
-- server-side SET selective access, list, and block-transfer forms;
-- server-side GET-NEXT, GET-WITH-LIST, and block transfer;
+- server-side SET selective access and list forms;
 - COSEM object access implementation inside `dlms-xdlms`;
 - GET-WITH-LIST;
-- server-side GET block production;
-- server-side SET block reassembly;
-- ACTION block transfer implementation;
 - selective access parameters;
+- general block transfer outside the implemented service-specific GET, SET,
+  and ACTION paths;
+- multiple concurrent block transfers of the same service direction in one
+  processor instance;
 - COSEM object registry and access-right decisions;
 - public facade connection options.
