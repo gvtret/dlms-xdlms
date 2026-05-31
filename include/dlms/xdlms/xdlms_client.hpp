@@ -2,6 +2,7 @@
 
 #include "dlms/association/association_client.hpp"
 #include "dlms/profile/apdu_channel.hpp"
+#include "dlms/xdlms/xdlms_security_processor.hpp"
 #include "dlms/xdlms/xdlms_types.hpp"
 
 namespace dlms {
@@ -16,6 +17,11 @@ public:
   XdlmsClient(
     dlms::profile::IApduChannel& channel,
     dlms::association::AssociationClient& association);
+
+  XdlmsClient(
+    dlms::profile::IApduChannel& channel,
+    dlms::association::AssociationClient& association,
+    IXdlmsSecurityProcessor& security);
 
   XdlmsClient(
     dlms::profile::IApduChannel& channel,
@@ -61,7 +67,8 @@ private:
 
   dlms::profile::IApduChannel& channel_;
   dlms::association::AssociationClient& association_;
-  dlms::security::CipheredApduProcessor* security_;
+  IXdlmsSecurityProcessor* security_;
+  dlms::security::CipheredApduProcessor* legacySecurity_;
   InvokeIdAllocator invokeIds_;
 };
 

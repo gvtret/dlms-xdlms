@@ -115,7 +115,8 @@ XdlmsStatus CopyEncodedData(
 
 XdlmsStatus SendAndReceive(
   dlms::profile::IApduChannel& channel,
-  dlms::security::CipheredApduProcessor* security,
+  IXdlmsSecurityProcessor* security,
+  dlms::security::CipheredApduProcessor* legacySecurity,
   const dlms::apdu::XdlmsApdu& request,
   std::vector<std::uint8_t>& decodedResponseBytes,
   dlms::apdu::XdlmsApdu& response)
@@ -129,12 +130,14 @@ XdlmsStatus SendAndReceive(
   }
 
   std::vector<std::uint8_t> outboundRequest = encodedRequest;
-  if (security != 0) {
+  if (security != 0 || legacySecurity != 0) {
     dlms::security::SecurityByteView plain;
     plain.data = encodedRequest.empty() ? 0 : &encodedRequest[0];
     plain.size = encodedRequest.size();
-    if (security->Protect(plain, outboundRequest) !=
-        dlms::security::SecurityStatus::Ok) {
+    const dlms::security::SecurityStatus status = security != 0
+      ? security->Protect(plain, outboundRequest)
+      : legacySecurity->Protect(plain, outboundRequest);
+    if (status != dlms::security::SecurityStatus::Ok) {
       return XdlmsStatus::SecurityFailed;
     }
   }
@@ -152,12 +155,14 @@ XdlmsStatus SendAndReceive(
   }
 
   std::vector<std::uint8_t> inboundResponse = encodedResponse;
-  if (security != 0) {
+  if (security != 0 || legacySecurity != 0) {
     dlms::security::SecurityByteView protectedApdu;
     protectedApdu.data = encodedResponse.empty() ? 0 : &encodedResponse[0];
     protectedApdu.size = encodedResponse.size();
-    if (security->Unprotect(protectedApdu, inboundResponse) !=
-        dlms::security::SecurityStatus::Ok) {
+    const dlms::security::SecurityStatus status = security != 0
+      ? security->Unprotect(protectedApdu, inboundResponse)
+      : legacySecurity->Unprotect(protectedApdu, inboundResponse);
+    if (status != dlms::security::SecurityStatus::Ok) {
       return XdlmsStatus::SecurityFailed;
     }
   }
@@ -262,13 +267,20 @@ dlms::apdu::XdlmsApdu MakeActionRequestBlock(
 
 XdlmsStatus ReceiveGetResponse(
   dlms::profile::IApduChannel& channel,
-  dlms::security::CipheredApduProcessor* security,
+  IXdlmsSecurityProcessor* security,
+  dlms::security::CipheredApduProcessor* legacySecurity,
   const dlms::apdu::XdlmsApdu& request,
   std::vector<std::uint8_t>& decodedResponseBytes,
   dlms::apdu::XdlmsApdu& response)
 {
   const XdlmsStatus status =
-    SendAndReceive(channel, security, request, decodedResponseBytes, response);
+    SendAndReceive(
+      channel,
+      security,
+      legacySecurity,
+      request,
+      decodedResponseBytes,
+      response);
   if (status != XdlmsStatus::Ok) {
     return status;
   }
@@ -279,13 +291,20 @@ XdlmsStatus ReceiveGetResponse(
 
 XdlmsStatus ReceiveActionResponse(
   dlms::profile::IApduChannel& channel,
-  dlms::security::CipheredApduProcessor* security,
+  IXdlmsSecurityProcessor* security,
+  dlms::security::CipheredApduProcessor* legacySecurity,
   const dlms::apdu::XdlmsApdu& request,
   std::vector<std::uint8_t>& decodedResponseBytes,
   dlms::apdu::XdlmsApdu& response)
 {
   const XdlmsStatus status =
-    SendAndReceive(channel, security, request, decodedResponseBytes, response);
+    SendAndReceive(
+      channel,
+      security,
+      legacySecurity,
+      request,
+      decodedResponseBytes,
+      response);
   if (status != XdlmsStatus::Ok) {
     return status;
   }
@@ -417,7 +436,8 @@ XdlmsStatus DecodeActionBlockPayload(
 
 XdlmsStatus CopyFinalActionResponse(
   dlms::profile::IApduChannel& channel,
-  dlms::security::CipheredApduProcessor* security,
+  IXdlmsSecurityProcessor* security,
+  dlms::security::CipheredApduProcessor* legacySecurity,
   std::uint8_t invokeId,
   std::uint8_t invokeIdAndPriority,
   const ServiceOptions& options,
@@ -464,6 +484,7 @@ XdlmsStatus CopyFinalActionResponse(
       status = ReceiveActionResponse(
         channel,
         security,
+        legacySecurity,
         MakeActionRequestNextPblock(invokeIdAndPriority, acknowledgedBlock),
         decodedResponseBytes,
         response);
@@ -490,6 +511,19 @@ XdlmsClient::XdlmsClient(
   : channel_(channel)
   , association_(association)
   , security_(0)
+  , legacySecurity_(0)
+  , invokeIds_()
+{
+}
+
+XdlmsClient::XdlmsClient(
+  dlms::profile::IApduChannel& channel,
+  dlms::association::AssociationClient& association,
+  IXdlmsSecurityProcessor& security)
+  : channel_(channel)
+  , association_(association)
+  , security_(&security)
+  , legacySecurity_(0)
   , invokeIds_()
 {
 }
@@ -500,7 +534,8 @@ XdlmsClient::XdlmsClient(
   dlms::security::CipheredApduProcessor& security)
   : channel_(channel)
   , association_(association)
-  , security_(&security)
+  , security_(0)
+  , legacySecurity_(&security)
   , invokeIds_()
 {
 }
@@ -543,6 +578,7 @@ XdlmsStatus XdlmsClient::Get(
   status = ReceiveGetResponse(
     channel_,
     security_,
+    legacySecurity_,
     request,
     decodedResponseBytes,
     response);
@@ -583,6 +619,7 @@ XdlmsStatus XdlmsClient::Get(
       status = ReceiveGetResponse(
         channel_,
         security_,
+        legacySecurity_,
         MakeGetRequestNext(invokeIdAndPriority, acknowledgedBlock),
         decodedResponseBytes,
         response);
@@ -662,6 +699,7 @@ XdlmsStatus XdlmsClient::Set(
     status = SendAndReceive(
       channel_,
       security_,
+      legacySecurity_,
       request,
       decodedResponseBytes,
       response);
@@ -733,6 +771,7 @@ XdlmsStatus XdlmsClient::Set(
     status = SendAndReceive(
       channel_,
       security_,
+      legacySecurity_,
       request,
       decodedResponseBytes,
       response);
@@ -841,6 +880,7 @@ XdlmsStatus XdlmsClient::Action(
       status = ReceiveActionResponse(
         channel_,
         security_,
+        legacySecurity_,
         requestBlock,
         decodedResponseBytes,
         response);
@@ -852,6 +892,7 @@ XdlmsStatus XdlmsClient::Action(
         return CopyFinalActionResponse(
           channel_,
           security_,
+          legacySecurity_,
           invokeId,
           invokeIdAndPriority,
           options,
@@ -885,6 +926,7 @@ XdlmsStatus XdlmsClient::Action(
   status = ReceiveActionResponse(
     channel_,
     security_,
+    legacySecurity_,
     request,
     decodedResponseBytes,
     response);
@@ -895,6 +937,7 @@ XdlmsStatus XdlmsClient::Action(
   return CopyFinalActionResponse(
     channel_,
     security_,
+    legacySecurity_,
     invokeId,
     invokeIdAndPriority,
     options,

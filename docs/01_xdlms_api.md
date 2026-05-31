@@ -82,6 +82,11 @@ of `0` represents success.
 ```cpp
 dlms::xdlms::XdlmsClient client(channel, association);
 dlms::xdlms::XdlmsClient secureClient(channel, association, security);
+dlms::xdlms::CipheredXdlmsSecurityProcessor securityPort(cipheredSecurity);
+dlms::xdlms::XdlmsClient secureClientViaPort(
+  channel,
+  association,
+  securityPort);
 
 dlms::xdlms::CosemAttributeDescriptor descriptor = {};
 descriptor.classId = 1;
@@ -96,10 +101,13 @@ const dlms::xdlms::XdlmsStatus status = client.Get(descriptor, result);
 optional security processor. The caller must keep all supplied objects alive for
 the client lifetime.
 
-When constructed with a `dlms::security::CipheredApduProcessor`, the client
-protects encoded request APDUs before `SendApdu()` and unprotects received
-response APDUs before xDLMS decode. The public GET/SET/ACTION service contract
-does not otherwise change.
+When constructed with an `IXdlmsSecurityProcessor`, the client protects
+encoded request APDUs before `SendApdu()` and unprotects received response
+APDUs before xDLMS decode. `CipheredXdlmsSecurityProcessor` adapts the default
+`dlms-security` implementation. Existing constructors that accept
+`dlms::security::CipheredApduProcessor` remain available as compatibility
+shortcuts. The public GET/SET/ACTION service contract does not otherwise
+change.
 
 ## 5. Server
 
@@ -184,6 +192,9 @@ dlms::xdlms::XdlmsServerApduProcessor secureProcessorWithOptions(
   dispatcher,
   security,
   dlms::xdlms::DefaultServiceOptions());
+dlms::xdlms::XdlmsServerApduProcessor secureProcessorViaPort(
+  dispatcher,
+  securityPort);
 
 std::vector<std::uint8_t> response;
 const dlms::xdlms::XdlmsStatus status =
@@ -191,9 +202,11 @@ const dlms::xdlms::XdlmsStatus status =
 ```
 
 `ProcessRequest` clears `response` before work starts and writes response bytes
-only when encoding succeeds. When constructed with a
-`dlms::security::CipheredApduProcessor`, the processor unprotects the request
-before xDLMS decode and protects the encoded response before returning it.
+only when encoding succeeds. When constructed with an
+`IXdlmsSecurityProcessor`, the processor unprotects the request before xDLMS
+decode and protects the encoded response before returning it. Constructors
+accepting `dlms::security::CipheredApduProcessor` are retained as
+compatibility shortcuts over the default security implementation.
 Options-aware constructors set processor-local block transfer limits while
 still deriving confirmed/high-priority flags from each incoming invoke id byte.
 
@@ -353,7 +366,12 @@ classDiagram
     +data
   }
 
-  class CipheredApduProcessor {
+  class IXdlmsSecurityProcessor {
+    +Protect(vector~uint8_t~, vector~uint8_t~&) SecurityStatus
+    +Unprotect(vector~uint8_t~, vector~uint8_t~&) SecurityStatus
+  }
+
+  class CipheredXdlmsSecurityProcessor {
     +Protect(vector~uint8_t~, vector~uint8_t~&) SecurityStatus
     +Unprotect(vector~uint8_t~, vector~uint8_t~&) SecurityStatus
   }
@@ -374,6 +392,7 @@ classDiagram
   XdlmsServerDispatcher --> SetResult
   XdlmsServerApduProcessor --> XdlmsServerDispatcher
   XdlmsServerApduProcessor --> GetResponseBlockState
-  XdlmsClient --> CipheredApduProcessor
-  XdlmsServerApduProcessor --> CipheredApduProcessor
+  XdlmsClient --> IXdlmsSecurityProcessor
+  XdlmsServerApduProcessor --> IXdlmsSecurityProcessor
+  CipheredXdlmsSecurityProcessor --> IXdlmsSecurityProcessor
 ```

@@ -189,14 +189,21 @@ Rules:
 - client GET/SET/ACTION first encode an unprotected xDLMS request APDU through
   `dlms-apdu`;
 - when configured, the client passes the encoded request to
-  `CipheredApduProcessor::Protect()` before sending it to `IApduChannel`;
+  `IXdlmsSecurityProcessor::Protect()` before sending it to `IApduChannel`;
 - when configured, the client passes the received response to
-  `CipheredApduProcessor::Unprotect()` before decoding it through `dlms-apdu`;
+  `IXdlmsSecurityProcessor::Unprotect()` before decoding it through
+  `dlms-apdu`;
 - server APDU processing unprotects the request before xDLMS decode and
   protects the encoded response before returning it to the caller;
 - no-security construction keeps the existing unprotected behavior;
 - security failures map to a dedicated xDLMS status and do not close or release
   an association.
+
+`IXdlmsSecurityProcessor` is the public xDLMS security port. The default
+`CipheredXdlmsSecurityProcessor` adapter delegates to
+`dlms::security::CipheredApduProcessor`, while applications may provide their
+own implementation for different key storage, counter, test, or cryptographic
+backends.
 
 Document RAG alignment:
 

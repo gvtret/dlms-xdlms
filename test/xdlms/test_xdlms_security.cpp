@@ -127,6 +127,74 @@ public:
   dlms::xdlms::GetIndication lastIndication;
 };
 
+class FakeXdlmsSecurityProcessor
+  : public dlms::xdlms::IXdlmsSecurityProcessor
+{
+public:
+  FakeXdlmsSecurityProcessor()
+    : protectStatus(dlms::security::SecurityStatus::Ok)
+    , unprotectStatus(dlms::security::SecurityStatus::Ok)
+    , protectCalls(0)
+    , unprotectCalls(0)
+  {
+  }
+
+  dlms::security::SecurityStatus Protect(
+    dlms::security::SecurityByteView plainApdu,
+    std::vector<std::uint8_t>& protectedApdu) const
+  {
+    ++protectCalls;
+    lastProtectedPlain.clear();
+    if (plainApdu.size != 0u) {
+      lastProtectedPlain.assign(
+        plainApdu.data,
+        plainApdu.data + plainApdu.size);
+    }
+    if (protectStatus != dlms::security::SecurityStatus::Ok) {
+      return protectStatus;
+    }
+    protectedApdu.clear();
+    protectedApdu.push_back(0xEEu);
+    if (plainApdu.size != 0u) {
+      protectedApdu.insert(
+        protectedApdu.end(),
+        plainApdu.data,
+        plainApdu.data + plainApdu.size);
+    }
+    return dlms::security::SecurityStatus::Ok;
+  }
+
+  dlms::security::SecurityStatus Unprotect(
+    dlms::security::SecurityByteView protectedApdu,
+    std::vector<std::uint8_t>& plainApdu) const
+  {
+    ++unprotectCalls;
+    lastUnprotectedProtected.clear();
+    if (protectedApdu.size != 0u) {
+      lastUnprotectedProtected.assign(
+        protectedApdu.data,
+        protectedApdu.data + protectedApdu.size);
+    }
+    if (unprotectStatus != dlms::security::SecurityStatus::Ok) {
+      return unprotectStatus;
+    }
+    plainApdu.clear();
+    if (protectedApdu.size != 0u) {
+      plainApdu.assign(
+        protectedApdu.data,
+        protectedApdu.data + protectedApdu.size);
+    }
+    return dlms::security::SecurityStatus::Ok;
+  }
+
+  dlms::security::SecurityStatus protectStatus;
+  dlms::security::SecurityStatus unprotectStatus;
+  mutable int protectCalls;
+  mutable int unprotectCalls;
+  mutable std::vector<std::uint8_t> lastProtectedPlain;
+  mutable std::vector<std::uint8_t> lastUnprotectedProtected;
+};
+
 std::vector<std::uint8_t> MakeAareBytes()
 {
   const std::uint8_t kAare[] = {
@@ -259,6 +327,48 @@ void Establish(dlms::association::AssociationClient& association,
 }
 
 } // namespace
+
+TEST(XdlmsSecurity, ClientUsesAbstractSecurityProcessor)
+{
+  FakeApduChannel channel;
+  dlms::association::AssociationClient association(
+    channel,
+    dlms::association::DefaultAssociationOptions());
+  Establish(association, channel);
+  channel.nextReceive = MakeDataResponse(0x81u);
+
+  FakeXdlmsSecurityProcessor security;
+  dlms::xdlms::XdlmsClient client(channel, association, security);
+  dlms::xdlms::GetResult result;
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            client.Get(MakeDescriptor(), result));
+
+  EXPECT_EQ(1, security.protectCalls);
+  EXPECT_EQ(1, security.unprotectCalls);
+  ASSERT_FALSE(channel.sent.empty());
+  EXPECT_EQ(0xEEu, channel.sent[0]);
+  EXPECT_EQ(0xC0u, security.lastProtectedPlain[0]);
+  EXPECT_EQ(1u, result.invokeId);
+}
+
+TEST(XdlmsSecurity, ServerUsesAbstractSecurityProcessor)
+{
+  FakeServerHandler handler;
+  dlms::xdlms::XdlmsServerDispatcher dispatcher(handler);
+  FakeXdlmsSecurityProcessor security;
+  dlms::xdlms::XdlmsServerApduProcessor processor(dispatcher, security);
+
+  std::vector<std::uint8_t> response;
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            processor.ProcessRequest(MakeGetRequest(0x81u), response));
+
+  EXPECT_EQ(1, handler.calls);
+  EXPECT_EQ(1, security.unprotectCalls);
+  EXPECT_EQ(1, security.protectCalls);
+  ASSERT_FALSE(response.empty());
+  EXPECT_EQ(0xEEu, response[0]);
+  EXPECT_EQ(0xC4u, security.lastProtectedPlain[0]);
+}
 
 TEST(XdlmsSecurity, ClientProtectsRequestAndUnprotectsResponse)
 {

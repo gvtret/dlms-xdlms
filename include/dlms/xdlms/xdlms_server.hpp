@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dlms/xdlms/xdlms_status.hpp"
+#include "dlms/xdlms/xdlms_security_processor.hpp"
 #include "dlms/xdlms/xdlms_types.hpp"
 
 #include <cstdint>
@@ -114,6 +115,13 @@ public:
     const ServiceOptions& options);
   XdlmsServerApduProcessor(
     XdlmsServerDispatcher& dispatcher,
+    IXdlmsSecurityProcessor& security);
+  XdlmsServerApduProcessor(
+    XdlmsServerDispatcher& dispatcher,
+    IXdlmsSecurityProcessor& security,
+    const ServiceOptions& options);
+  XdlmsServerApduProcessor(
+    XdlmsServerDispatcher& dispatcher,
     dlms::security::CipheredApduProcessor& security);
   XdlmsServerApduProcessor(
     XdlmsServerDispatcher& dispatcher,
@@ -126,7 +134,8 @@ public:
 
 private:
   XdlmsServerDispatcher& dispatcher_;
-  dlms::security::CipheredApduProcessor* security_;
+  IXdlmsSecurityProcessor* security_;
+  dlms::security::CipheredApduProcessor* legacySecurity_;
   ServiceOptions options_;
   GetResponseBlockState getBlocks_;
   SetRequestBlockState setBlocks_;

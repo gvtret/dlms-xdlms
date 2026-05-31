@@ -931,6 +931,7 @@ XdlmsServerApduProcessor::XdlmsServerApduProcessor(
   XdlmsServerDispatcher& dispatcher)
   : dispatcher_(dispatcher)
   , security_(0)
+  , legacySecurity_(0)
   , options_(DefaultServiceOptions())
   , getBlocks_(EmptyGetResponseBlockState())
   , setBlocks_(EmptySetRequestBlockState())
@@ -943,6 +944,34 @@ XdlmsServerApduProcessor::XdlmsServerApduProcessor(
   const ServiceOptions& options)
   : dispatcher_(dispatcher)
   , security_(0)
+  , legacySecurity_(0)
+  , options_(options)
+  , getBlocks_(EmptyGetResponseBlockState())
+  , setBlocks_(EmptySetRequestBlockState())
+  , actionBlocks_(EmptyActionRequestBlockState())
+{
+}
+
+XdlmsServerApduProcessor::XdlmsServerApduProcessor(
+  XdlmsServerDispatcher& dispatcher,
+  IXdlmsSecurityProcessor& security)
+  : dispatcher_(dispatcher)
+  , security_(&security)
+  , legacySecurity_(0)
+  , options_(DefaultServiceOptions())
+  , getBlocks_(EmptyGetResponseBlockState())
+  , setBlocks_(EmptySetRequestBlockState())
+  , actionBlocks_(EmptyActionRequestBlockState())
+{
+}
+
+XdlmsServerApduProcessor::XdlmsServerApduProcessor(
+  XdlmsServerDispatcher& dispatcher,
+  IXdlmsSecurityProcessor& security,
+  const ServiceOptions& options)
+  : dispatcher_(dispatcher)
+  , security_(&security)
+  , legacySecurity_(0)
   , options_(options)
   , getBlocks_(EmptyGetResponseBlockState())
   , setBlocks_(EmptySetRequestBlockState())
@@ -954,7 +983,8 @@ XdlmsServerApduProcessor::XdlmsServerApduProcessor(
   XdlmsServerDispatcher& dispatcher,
   dlms::security::CipheredApduProcessor& security)
   : dispatcher_(dispatcher)
-  , security_(&security)
+  , security_(0)
+  , legacySecurity_(&security)
   , options_(DefaultServiceOptions())
   , getBlocks_(EmptyGetResponseBlockState())
   , setBlocks_(EmptySetRequestBlockState())
@@ -967,7 +997,8 @@ XdlmsServerApduProcessor::XdlmsServerApduProcessor(
   dlms::security::CipheredApduProcessor& security,
   const ServiceOptions& options)
   : dispatcher_(dispatcher)
-  , security_(&security)
+  , security_(0)
+  , legacySecurity_(&security)
   , options_(options)
   , getBlocks_(EmptyGetResponseBlockState())
   , setBlocks_(EmptySetRequestBlockState())
@@ -982,12 +1013,14 @@ XdlmsStatus XdlmsServerApduProcessor::ProcessRequest(
   responseApdu.clear();
 
   std::vector<std::uint8_t> plainRequest = requestApdu;
-  if (security_ != 0) {
+  if (security_ != 0 || legacySecurity_ != 0) {
     dlms::security::SecurityByteView protectedApdu;
     protectedApdu.data = requestApdu.empty() ? 0 : &requestApdu[0];
     protectedApdu.size = requestApdu.size();
-    if (security_->Unprotect(protectedApdu, plainRequest) !=
-        dlms::security::SecurityStatus::Ok) {
+    const dlms::security::SecurityStatus status = security_ != 0
+      ? security_->Unprotect(protectedApdu, plainRequest)
+      : legacySecurity_->Unprotect(protectedApdu, plainRequest);
+    if (status != dlms::security::SecurityStatus::Ok) {
       return XdlmsStatus::SecurityFailed;
     }
   }
@@ -1033,7 +1066,8 @@ XdlmsStatus XdlmsServerApduProcessor::ProcessRequest(
       return XdlmsStatus::UnsupportedFeature;
   }
 
-  if (status != XdlmsStatus::Ok || security_ == 0) {
+  if (status != XdlmsStatus::Ok ||
+      (security_ == 0 && legacySecurity_ == 0)) {
     return status;
   }
 
@@ -1041,8 +1075,10 @@ XdlmsStatus XdlmsServerApduProcessor::ProcessRequest(
   dlms::security::SecurityByteView plain;
   plain.data = plainResponse.empty() ? 0 : &plainResponse[0];
   plain.size = plainResponse.size();
-  if (security_->Protect(plain, responseApdu) !=
-      dlms::security::SecurityStatus::Ok) {
+  const dlms::security::SecurityStatus securityStatus = security_ != 0
+    ? security_->Protect(plain, responseApdu)
+    : legacySecurity_->Protect(plain, responseApdu);
+  if (securityStatus != dlms::security::SecurityStatus::Ok) {
     responseApdu.clear();
     return XdlmsStatus::SecurityFailed;
   }

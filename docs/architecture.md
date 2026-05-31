@@ -189,7 +189,7 @@ and decoded-dispatch boundary.
 sequenceDiagram
   participant App as Caller
   participant Client as XdlmsClient
-  participant Security as CipheredApduProcessor
+  participant Security as IXdlmsSecurityProcessor
   participant Channel as IApduChannel
 
   App->>Client: Get/Set/Action
@@ -208,7 +208,7 @@ sequenceDiagram
 sequenceDiagram
   participant Caller as Association or Server Boundary
   participant Processor as XdlmsServerApduProcessor
-  participant Security as CipheredApduProcessor
+  participant Security as IXdlmsSecurityProcessor
   participant Dispatcher as XdlmsServerDispatcher
 
   Caller->>Processor: ProcessRequest(ciphered request)
@@ -368,12 +368,13 @@ not share buffers.
 ## 13. Ownership
 
 `XdlmsClient` stores non-owning references to the association and profile APDU
-channel boundaries and may store a non-owning reference to a security
-processor. Server dispatch stores non-owning access to an xDLMS server handler.
-The server APDU processor may also store a non-owning security processor
-reference. The layer does not own transport resources, association lifetime,
-security material, or COSEM object storage. Block-transfer state is limited to
-one client service call or one active server APDU processor sequence.
+channel boundaries and may store a non-owning reference to the abstract
+`IXdlmsSecurityProcessor` port. Server dispatch stores non-owning access to an
+xDLMS server handler. The server APDU processor may also store a non-owning
+security processor reference. The layer does not own transport resources,
+association lifetime, security material, or COSEM object storage.
+Block-transfer state is limited to one client service call or one active server
+APDU processor sequence.
 
 ## 14. Error Model
 
