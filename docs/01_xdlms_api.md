@@ -81,11 +81,14 @@ of `0` represents success.
 
 ```cpp
 dlms::xdlms::XdlmsClient client(channel, association);
+dlms::xdlms::AssociationClientXdlmsAssociationState associationState(
+  association);
+dlms::xdlms::XdlmsClient clientViaPort(channel, associationState);
 dlms::xdlms::XdlmsClient secureClient(channel, association, security);
 dlms::xdlms::CipheredXdlmsSecurityProcessor securityPort(cipheredSecurity);
 dlms::xdlms::XdlmsClient secureClientViaPort(
   channel,
-  association,
+  associationState,
   securityPort);
 
 dlms::xdlms::CosemAttributeDescriptor descriptor = {};
@@ -97,9 +100,14 @@ dlms::xdlms::GetResult result;
 const dlms::xdlms::XdlmsStatus status = client.Get(descriptor, result);
 ```
 
-`XdlmsClient` does not own the association object, profile APDU channel, or
-optional security processor. The caller must keep all supplied objects alive for
-the client lifetime.
+`XdlmsClient` does not own the association-state object, profile APDU channel,
+or optional security processor. The caller must keep all supplied objects alive
+for the client lifetime.
+
+The preferred association dependency is `IXdlmsAssociationState`, which lets an
+embedding application provide its own association layer. The legacy
+`AssociationClient` constructors remain available as compatibility shortcuts
+over the default `dlms-association` implementation.
 
 When constructed with an `IXdlmsSecurityProcessor`, the client protects
 encoded request APDUs before `SendApdu()` and unprotects received response

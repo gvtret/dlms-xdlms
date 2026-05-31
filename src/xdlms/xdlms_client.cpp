@@ -503,13 +503,48 @@ XdlmsStatus CopyFinalActionResponse(
   return status == XdlmsStatus::Ok ? XdlmsStatus::Ok : status;
 }
 
+bool IsAssociated(
+  IXdlmsAssociationState* association,
+  dlms::association::AssociationClient* legacyAssociation)
+{
+  return association != 0
+    ? association->IsAssociated()
+    : legacyAssociation->IsAssociated();
+}
+
 } // namespace
+
+XdlmsClient::XdlmsClient(
+  dlms::profile::IApduChannel& channel,
+  IXdlmsAssociationState& association)
+  : channel_(channel)
+  , association_(&association)
+  , legacyAssociation_(0)
+  , security_(0)
+  , legacySecurity_(0)
+  , invokeIds_()
+{
+}
+
+XdlmsClient::XdlmsClient(
+  dlms::profile::IApduChannel& channel,
+  IXdlmsAssociationState& association,
+  IXdlmsSecurityProcessor& security)
+  : channel_(channel)
+  , association_(&association)
+  , legacyAssociation_(0)
+  , security_(&security)
+  , legacySecurity_(0)
+  , invokeIds_()
+{
+}
 
 XdlmsClient::XdlmsClient(
   dlms::profile::IApduChannel& channel,
   dlms::association::AssociationClient& association)
   : channel_(channel)
-  , association_(association)
+  , association_(0)
+  , legacyAssociation_(&association)
   , security_(0)
   , legacySecurity_(0)
   , invokeIds_()
@@ -521,7 +556,8 @@ XdlmsClient::XdlmsClient(
   dlms::association::AssociationClient& association,
   IXdlmsSecurityProcessor& security)
   : channel_(channel)
-  , association_(association)
+  , association_(0)
+  , legacyAssociation_(&association)
   , security_(&security)
   , legacySecurity_(0)
   , invokeIds_()
@@ -533,7 +569,8 @@ XdlmsClient::XdlmsClient(
   dlms::association::AssociationClient& association,
   dlms::security::CipheredApduProcessor& security)
   : channel_(channel)
-  , association_(association)
+  , association_(0)
+  , legacyAssociation_(&association)
   , security_(0)
   , legacySecurity_(&security)
   , invokeIds_()
@@ -559,7 +596,7 @@ XdlmsStatus XdlmsClient::Get(
     return status;
   }
 
-  if (!association_.IsAssociated()) {
+  if (!IsAssociated(association_, legacyAssociation_)) {
     return XdlmsStatus::NotAssociated;
   }
 
@@ -678,7 +715,7 @@ XdlmsStatus XdlmsClient::Set(
       return status;
     }
 
-    if (!association_.IsAssociated()) {
+    if (!IsAssociated(association_, legacyAssociation_)) {
       return XdlmsStatus::NotAssociated;
     }
 
@@ -738,7 +775,7 @@ XdlmsStatus XdlmsClient::Set(
   if (!options.allowBlockTransfer) {
     return XdlmsStatus::BlockTransferRequired;
   }
-  if (!association_.IsAssociated()) {
+  if (!IsAssociated(association_, legacyAssociation_)) {
     return XdlmsStatus::NotAssociated;
   }
 
@@ -845,7 +882,7 @@ XdlmsStatus XdlmsClient::Action(
     return XdlmsStatus::BlockTransferRequired;
   }
 
-  if (!association_.IsAssociated()) {
+  if (!IsAssociated(association_, legacyAssociation_)) {
     return XdlmsStatus::NotAssociated;
   }
 

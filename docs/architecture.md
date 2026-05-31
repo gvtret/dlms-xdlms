@@ -26,7 +26,7 @@ flowchart TD
 sequenceDiagram
   participant App as Caller
   participant Client as XdlmsClient
-  participant Assoc as AssociationClient
+  participant Assoc as IXdlmsAssociationState
   participant Apdu as dlms-apdu
   participant Channel as IApduChannel
 
@@ -48,7 +48,7 @@ classDiagram
     +Get(CosemAttributeDescriptor, GetResult&) XdlmsStatus
   }
 
-  class AssociationClient {
+  class IXdlmsAssociationState {
     +IsAssociated() bool
   }
 
@@ -80,7 +80,7 @@ classDiagram
     +DecodeXdlmsApdu()
   }
 
-  XdlmsClient --> AssociationClient
+  XdlmsClient --> IXdlmsAssociationState
   XdlmsClient --> IApduChannel
   XdlmsClient --> InvokeIdAllocator
   XdlmsClient --> dlms_apdu

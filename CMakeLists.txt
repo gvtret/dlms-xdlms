@@ -8,6 +8,7 @@ option(DLMS_BUILD_TESTS "Build GoogleTest tests" ON)
 option(DLMS_USE_SYSTEM_GTEST "Use system-installed GoogleTest" OFF)
 
 add_library(dlms_xdlms
+  src/xdlms/xdlms_association_state.cpp
   src/xdlms/xdlms_client.cpp
   src/xdlms/xdlms_security_processor.cpp
   src/xdlms/xdlms_server.cpp

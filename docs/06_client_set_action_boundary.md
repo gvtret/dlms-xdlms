@@ -97,7 +97,7 @@ flowchart LR
   InvokeIds["InvokeIdAllocator"]
   APDU["dlms-apdu<br/>SET/ACTION codec"]
   Channel["IApduChannel"]
-  Assoc["AssociationClient"]
+  Assoc["IXdlmsAssociationState"]
 
   App --> Client
   Client --> Assoc
@@ -112,7 +112,7 @@ flowchart LR
 sequenceDiagram
   participant App
   participant Client as XdlmsClient
-  participant Assoc as AssociationClient
+  participant Assoc as IXdlmsAssociationState
   participant Codec as dlms-apdu
   participant Channel as IApduChannel
 
@@ -134,7 +134,7 @@ sequenceDiagram
 classDiagram
   class XdlmsClient {
     -IApduChannel& channel
-    -AssociationClient& association
+    -IXdlmsAssociationState& association
     -InvokeIdAllocator invokeIds
     +Get(descriptor, result) XdlmsStatus
     +Set(descriptor, encodedData, result) XdlmsStatus
@@ -146,7 +146,7 @@ classDiagram
   class SetResult
   class ActionResult
   class InvokeIdAllocator
-  class AssociationClient
+  class IXdlmsAssociationState
   class IApduChannel
 
   XdlmsClient --> CosemAttributeDescriptor
@@ -154,7 +154,7 @@ classDiagram
   XdlmsClient --> SetResult
   XdlmsClient --> ActionResult
   XdlmsClient --> InvokeIdAllocator
-  XdlmsClient --> AssociationClient
+  XdlmsClient --> IXdlmsAssociationState
   XdlmsClient --> IApduChannel
 ```
 

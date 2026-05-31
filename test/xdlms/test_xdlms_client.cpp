@@ -98,6 +98,28 @@ public:
   std::deque<std::vector<std::uint8_t> > receiveQueue;
 };
 
+class FakeAssociationState : public dlms::xdlms::IXdlmsAssociationState
+{
+public:
+  explicit FakeAssociationState(bool associated)
+    : associated_(associated)
+  {
+  }
+
+  bool IsAssociated() const
+  {
+    return associated_;
+  }
+
+  void SetAssociated(bool associated)
+  {
+    associated_ = associated;
+  }
+
+private:
+  bool associated_;
+};
+
 std::vector<std::uint8_t> MakeAareBytes()
 {
   const std::uint8_t kAare[] = {
@@ -346,6 +368,23 @@ TEST(XdlmsClient, GetSendsNormalRequestAndCopiesDataResult)
   EXPECT_EQ(0x09u, result.data[1]);
   EXPECT_EQ(0xF1u, result.data[2]);
   EXPECT_FALSE(result.hasAccessResult);
+}
+
+TEST(XdlmsClient, GetCanUseAbstractAssociationState)
+{
+  FakeApduChannel channel;
+  FakeAssociationState association(true);
+  channel.nextReceive = MakeDataResponse(0x81u);
+
+  dlms::xdlms::XdlmsClient client(channel, association);
+  dlms::xdlms::GetResult result;
+
+  EXPECT_EQ(dlms::xdlms::XdlmsStatus::Ok,
+            client.Get(MakeDescriptor(), result));
+
+  EXPECT_EQ(1, channel.sendCalls);
+  EXPECT_EQ(1u, result.invokeId);
+  EXPECT_TRUE(result.hasData);
 }
 
 TEST(XdlmsClient, GetRequiresAssociatedAssociation)

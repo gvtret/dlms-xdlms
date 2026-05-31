@@ -32,6 +32,9 @@ Existing no-security constructors remain valid:
 
 ```cpp
 XdlmsClient(profile::IApduChannel& channel,
+            IXdlmsAssociationState& association);
+
+XdlmsClient(profile::IApduChannel& channel,
             association::AssociationClient& association);
 
 XdlmsServerApduProcessor(XdlmsServerDispatcher& dispatcher);
@@ -40,6 +43,10 @@ XdlmsServerApduProcessor(XdlmsServerDispatcher& dispatcher);
 New security constructors add a non-owning `dlms-security` processor reference:
 
 ```cpp
+XdlmsClient(profile::IApduChannel& channel,
+            IXdlmsAssociationState& association,
+            IXdlmsSecurityProcessor& security);
+
 XdlmsClient(profile::IApduChannel& channel,
             association::AssociationClient& association,
             security::CipheredApduProcessor& security);

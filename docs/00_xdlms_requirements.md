@@ -39,8 +39,10 @@ Document RAG references:
 The current client boundary implements confirmed GET-REQUEST-NORMAL over LN
 referencing:
 
-1. The caller provides an associated `AssociationClient` and a profile APDU
-   channel boundary.
+1. The caller provides an associated `IXdlmsAssociationState` and a profile
+   APDU channel boundary. `AssociationClientXdlmsAssociationState` adapts the
+   default `dlms-association` client, while applications may provide their own
+   association-state implementation.
 2. The caller supplies a `CosemAttributeDescriptor`.
 3. The client allocates an invoke id, builds GET-REQUEST-NORMAL, and sends it.
 4. The client receives one APDU and decodes GET-RESPONSE-NORMAL.
